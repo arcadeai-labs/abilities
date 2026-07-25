@@ -1,0 +1,22 @@
+{
+  "name": "return-types-test",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.10.0",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:ports": "turbo run dev",
+    "build": "turbo run build",
+    "start": "turbo run start",
+    "typecheck": "turbo run typecheck",
+    "urls": "portless list"
+  },
+  "devDependencies": {
+    "portless": "^0.15.4",
+    "turbo": "^2.5.6",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

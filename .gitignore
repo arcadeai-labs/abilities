@@ -1,0 +1,46 @@
+# dependencies (pnpm install)
+node_modules
+
+# build output
+out
+dist
+dist-ssr
+.output
+.tanstack
+.vinxi
+.wrangler
+*.tgz
+
+# turbo
+.turbo
+
+# code coverage
+coverage
+*.lcov
+
+# logs
+logs
+_.log
+report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
+
+# caches
+.eslintcache
+.cache
+*.tsbuildinfo
+__unconfig*
+
+# IntelliJ based IDEs
+.idea
+
+# Finder (MacOS) folder config
+.DS_Store
+
+# PGlite data dir
+pgdata/
