@@ -10,9 +10,13 @@
     "start": "turbo run start",
     "sync": "pnpm --filter @repo/api sync",
     "typecheck": "turbo run typecheck",
-    "urls": "portless list"
+    "urls": "portless list",
+    "check": "biome check --write --unsafe .",
+    "format": "biome check --write --unsafe ."
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.5",
+    "biome-plugin-no-type-assertion": "^1.1.1",
     "portless": "^0.15.4",
     "turbo": "^2.5.6",
     "typescript": "^5.9.2"
