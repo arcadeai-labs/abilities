@@ -98,6 +98,94 @@ compiles it, so there is no build step.
 
   A dir killed with `SIGKILL` is unrecoverable: delete it and re-run `pnpm sync`.
 - `node:fs`/`node:path` are fine here.
+- `pnpm --filter @repo/api test` runs vitest. **The suite has no mocks** — it calls
+  the real Arcade API through the real executor, so it needs `ARCADE_API_KEY` and a
+  synced catalog, and a pass means the path callers take actually works.
+  - `Math` is what makes that affordable: 23 tools needing neither authorization nor
+    secrets, marked `read_only`, returning deterministic answers. `Math.Add` is the
+    happy path, `Math.SumList` proves nested arguments survive the JSON boundary,
+    and `Math.Divide` by zero is a genuine upstream failure. `src/testing.ts` holds
+    the shared fixtures.
+  - `fileParallelism` and `isolate` are both off: PGlite's lock means one process,
+    one handle, one module registry for the whole run.
+  - `NODE_OPTIONS` rejects `--env-file-if-exists`, so the script invokes vitest's
+    entry through `node` directly to keep the repo's .env convention.
+- `pnpm --filter @repo/api smoke` drives every route in one pass against the live
+  API. Same key requirement; it is a script, not a test.
+
+## Scripts (`packages/api`)
+
+Users write TypeScript against the catalog's types, validate it without running it,
+and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
+`POST /api/scripts` → `POST /api/scripts/:id/run`.
+
+- **Arcade's `ValueSchema` is richer than the SDK says.** The wire format carries
+  `properties`, `required_keys`, `inner_properties`, `inner_required_keys`,
+  `nullable` and `description`, nested up to five deep; `@arcadeai/arcadejs`
+  declares only `val_type | enum | inner_val_type`. `src/value-schema.ts` owns the
+  real shape and the table's JSONB columns are typed against it — do not go back to
+  `ToolDefinition`.
+- Arrays of objects put their element shape on **`inner_properties`**, not
+  `properties`. Missing that silently degrades a typed tool to `unknown`.
+- `required_keys: []` beside a populated `properties` is ambiguous upstream
+  (Github does it, Apollo doesn't), so `requiredKeys()` reads it as *unknown*
+  requiredness and every field is emitted optional. That is why `issue.title` is
+  `string | undefined` and scripts need `?? fallback`. Flipping this to "all
+  required" is a one-line change and an unsound one.
+- **Names are derived once over the whole catalog** (`src/catalog.ts` →
+  `buildNameMap`), never over a filtered subset: collisions resolve against
+  everything present, so a per-request map would hand the same tool different
+  identifiers depending on the filter, and stored grants would drift. All 8196
+  tools across 123 toolkits currently map without a single collision.
+- **A script's capability grant comes from syntax, never from a type.** It is the
+  destructured second parameter of `run`, plus the `toolkit.method(...)` calls made
+  through those bindings. `src/policy.ts` enforces the rules that keep that
+  extraction sound — a toolkit binding may *only* be the object of a direct method
+  call, so aliasing, computed access and passing it around are all errors. Relax
+  those and the grant stops meaning anything.
+- Scripts may **annotate with types but not declare them** (no type aliases,
+  interfaces, conditional or mapped types). This isn't style: the checker runs in
+  our process on untrusted input, and recursive type computation is a compile bomb.
+  Removing the capability is why validation doesn't need a worker — which matters
+  because the frontend bundles this package and can't spawn a `.ts` worker.
+- The contract (`input`, `output`, `expect`) is **interpreted out of the AST** by
+  `src/schema-dsl.ts`, not evaluated. That is what keeps "storing a script never
+  runs it" true. `z` is a deliberately small Zod-shaped subset, not Zod: a total
+  interpreter over it is tractable, and Zod's declarations would dominate the cost
+  of checking a twenty-line script. The guest's `z` is an inert stub, because every
+  check runs host-side.
+- **Nothing writes to `scripts` except the validate-then-store path**, so the table
+  holds an invariant: every row type-checks against its snapshot. There is no
+  `invalid` state — only `stale`, when a later sync moves the catalog. That's what
+  `POST /api/revalidate` reports.
+- The sandbox (`src/sandbox.ts`) is QuickJS-on-WASM via the **`sync`** variant, not
+  `asyncify`: an asyncified module can only suspend for one host call at a time
+  across every context inside it, which would serialise concurrent runs. Host calls
+  go through `newFunction` + `newPromise` instead.
+  - The guarantee is *no capability the guest wasn't handed*, not "QuickJS is
+    unescapable". A fresh context has ECMAScript builtins and nothing else — no
+    `fetch`, `require`, `process`, timers or I/O. The tool bridge is generated from
+    the stored grant, so an ungranted tool isn't merely rejected, it doesn't exist
+    as a property.
+  - Values cross as JSON strings only. No live objects, no functions, no proxies.
+  - `setInterruptHandler` bounds guest bytecode but **cannot preempt a pending host
+    call**, so `callTool` races the same deadline itself. Both are load-bearing.
+  - Host error messages reach guest `catch` verbatim; construct them deliberately.
+  - Dispose the context only — its runtime is an owned lifetime.
+- Tools execute as a named end user (`userId`), never as the deployment. The API key
+  never enters a script, so even a total escape is bounded by what that user could
+  already do through Arcade directly.
+- A catalog-declared output shape is **descriptive**: a mismatch is recorded as
+  `drift`, not a failure, because a vendor adding a field must not break scripts. An
+  `expect` shape is the author's **assertion**, so a mismatch fails the run.
+- There is no dry-run mode and no schema-derived fake data. Generating a plausible
+  value from a declared shape only proves the shape was declared, and it diverges
+  from what the tool really returns exactly where it would matter. Exercise a script
+  by running it; `metadata.behavior.read_only` is how you tell which tools are safe
+  to point it at.
+- Coverage is the thing to watch: curated toolkits are ~70% typed, the 7038
+  OpenAPI-generated `*Api` tools are 0%. `GET /api/coverage` is the list, and the
+  fix is upstream in the toolkit definitions rather than schema inference here.
 
 ## Frontend (`apps/frontend`)
 

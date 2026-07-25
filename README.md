@@ -46,9 +46,11 @@ browser warnings. `pnpm dlx portless doctor` diagnoses proxy/DNS/CA problems.
 `--env-file-if-exists`.
 
 ```bash
-pnpm --filter @repo/backend sync         # mirror the Arcade catalog into PGlite
-pnpm --filter @repo/backend db:generate  # drizzle-kit migrations
-pnpm --filter @repo/backend rpc-demo     # typed Hono RPC client against a running server
+pnpm sync                               # migrate + mirror the Arcade catalog into PGlite
+pnpm --filter @repo/api db:migrate      # apply migrations only (stop the server first)
+pnpm --filter @repo/api db:generate     # drizzle-kit migrations
+pnpm --filter @repo/api rpc-demo        # typed Hono RPC client against a running server
+pnpm --filter @repo/api smoke           # manual E2E of validate/store/run (needs sync + key)
 ```
 
 Endpoints: `POST /seed`, `GET /toolkits`, `GET /tools`, plus `GET /openapi` and
@@ -56,14 +58,14 @@ Endpoints: `POST /seed`, `GET /toolkits`, `GET /tools`, plus `GET /openapi` and
 
 Two caveats worth knowing:
 
-- PGlite takes an **exclusive lock** on `apps/backend/pgdata`, so stop the server
-  before running `sync` or `db:studio`.
+- PGlite takes an **exclusive lock** on the workspace `pgdata` dir, so stop the server
+  before running `sync`, `db:migrate`, or `db:studio`.
 - It also needs a clean shutdown or the data dir won't reopen. `server.ts` closes
   it on `SIGINT`/`SIGTERM`; if you ever kill the process with `SIGKILL`, delete
-  `apps/backend/pgdata` and re-run `sync` to rebuild it.
+  `pgdata` and re-run `sync` to rebuild it.
 
 `rpc-demo` reads `API_URL`, so point it at the proxied backend:
 
 ```bash
-API_URL=$(pnpm dlx portless get returntypes-api) pnpm --filter @repo/backend rpc-demo
+API_URL=$(pnpm dlx portless get returntypes-api) pnpm --filter @repo/api rpc-demo
 ```

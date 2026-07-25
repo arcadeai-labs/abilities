@@ -1,5 +1,6 @@
 import type { ToolDefinition } from "@arcadeai/arcadejs/resources/tools/tools";
-import { index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import type { ToolInput, ToolOutput } from "./value-schema";
 
 export const tools = pgTable(
   "tools",
@@ -11,8 +12,11 @@ export const tools = pgTable(
     toolkitName: text("toolkit_name").notNull(),
     toolkitDescription: text("toolkit_description"),
     toolkitVersion: text("toolkit_version"),
-    input: jsonb("input").$type<ToolDefinition["input"]>(),
-    output: jsonb("output").$type<ToolDefinition["output"]>(),
+    // Typed against ./value-schema rather than the SDK: `ToolDefinition`'s
+    // `ValueSchema` omits `properties`, `required_keys`, `inner_properties`,
+    // `nullable` and `description`, all of which the API sends and codegen needs.
+    input: jsonb("input").$type<ToolInput>(),
+    output: jsonb("output").$type<ToolOutput>(),
     requirements: jsonb("requirements").$type<ToolDefinition["requirements"]>(),
     metadata: jsonb("metadata").$type<ToolDefinition["metadata"]>(),
     formattedSchema: jsonb("formatted_schema").$type<ToolDefinition["formatted_schema"]>(),
@@ -28,3 +32,62 @@ export const tools = pgTable(
 
 export type ToolRow = typeof tools.$inferSelect;
 export type NewToolRow = typeof tools.$inferInsert;
+
+/**
+ * Stored scripts.
+ *
+ * Nothing writes here except the validate-then-store path, so the table holds an
+ * invariant rather than just rows: **every script in it type-checks against its
+ * catalog snapshot**. There is no `invalid` state to represent — a script can only
+ * go *stale*, when a later sync changes the tools underneath it, which is why
+ * `snapshotId` is recorded alongside the source.
+ *
+ * `toolGrant` and `contract` are derived from the source at write time and are what
+ * the sandbox actually enforces at run time. Re-deriving them per run would mean
+ * parsing untrusted source on the hot path; storing them means the capability set
+ * is a column you can query and audit.
+ */
+export const scripts = pgTable("scripts", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  source: text("source").notNull(),
+  /** Type-erased source, ready for the sandbox. */
+  compiled: text("compiled").notNull(),
+  sourceHash: text("source_hash").notNull(),
+  /** `github.getIssue` → `Github.GetIssue`: the runtime allowlist. */
+  toolGrant: jsonb("tool_grant").$type<Record<string, string>>().notNull(),
+  namespaces: jsonb("namespaces").$type<string[]>().notNull(),
+  /** `input`, `output` and `expect` specs, read out of the source without running it. */
+  contract: jsonb("contract").$type<unknown>().notNull(),
+  /** The catalog this was validated against; a mismatch means "revalidate me". */
+  snapshotId: text("snapshot_id").notNull(),
+  version: integer("version").notNull().default(1),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+});
+
+export type ScriptRow = typeof scripts.$inferSelect;
+
+/** One execution. Written before the sandbox starts, so tool effects are never unrecorded. */
+export const runs = pgTable(
+  "runs",
+  {
+    id: text("id").primaryKey(),
+    scriptId: text("script_id").notNull(),
+    scriptVersion: integer("script_version").notNull(),
+    /** The Arcade end user the run executed as. */
+    userId: text("user_id").notNull(),
+    input: jsonb("input").$type<unknown>(),
+    /** Discriminated on `kind`; an HTTP status is a lossy summary of this. */
+    outcome: jsonb("outcome").$type<unknown>(),
+    logs: jsonb("logs").$type<string[]>(),
+    toolCalls: jsonb("tool_calls").$type<unknown>(),
+    durationMs: integer("duration_ms"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (t) => [index("runs_script_id_idx").on(t.scriptId), index("runs_started_at_idx").on(t.startedAt)],
+);
+
+export type RunRow = typeof runs.$inferSelect;

@@ -8,6 +8,13 @@
       "when": 1784958350654,
       "tag": "0000_early_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784971184119,
+      "tag": "0001_tired_silver_surfer",
+      "breakpoints": true
     }
   ]
 }
