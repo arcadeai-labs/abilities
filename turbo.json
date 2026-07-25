@@ -12,8 +12,7 @@
     },
     "dev:portless": {
       "cache": false,
-      "persistent": true,
-      "passThroughEnv": ["PORTLESS_*", "PORT", "HOST"]
+      "persistent": true
     },
     "start": {
       "dependsOn": ["build"],

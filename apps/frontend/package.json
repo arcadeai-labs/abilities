@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "dev:portless": "portless ${PORTLESS_BASE:-returntypes} --force vite dev",
+    "dev:portless": "portless $(node ../../scripts/portless-name.mjs returntypes) --force vite dev",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",

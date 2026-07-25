@@ -18,15 +18,15 @@ apps/frontend   TanStack Start + shadcn/ui, Vite
 not add hardcoded ports or `--port` flags to dev scripts, portless assigns the
 port and injects `PORT`/`HOST` (and `--port` for Vite).
 
-URLs embed the git branch, via `scripts/portless-base.mjs`:
+Service names come from `scripts/portless-name.mjs`, which prefixes the git branch
+on every branch except the default one:
 
-- frontend `https://<branch>.returntypes.localhost`
-- backend `https://api.<branch>.returntypes.localhost`
+- frontend `returntypes` / `<branch>.returntypes`
+- backend `returntypes-api` / `<branch>.returntypes-api`
 
-Each app's `dev:portless` script builds its name from `$PORTLESS_BASE`, which
-`scripts/dev.mjs` exports before delegating to `turbo run dev:portless`. Anything
-reading `PORTLESS_*` from a turbo task must be declared in that task's
-`passThroughEnv` — turbo runs in strict env mode.
+Each app's `dev:portless` script calls that helper itself, so running one app
+directly yields the same URL as `pnpm dev`. Add a new app by giving it a
+`dev:portless` script in the same shape and listing it in `scripts/dev.mjs`.
 
 Both `dev:portless` scripts pass `--force` so a re-run reclaims its route from a
 stale session rather than erroring; keep it.

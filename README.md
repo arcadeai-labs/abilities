@@ -15,18 +15,18 @@ pnpm dev
 ```
 
 `pnpm dev` runs both apps behind the portless HTTPS proxy. There are no port
-numbers to remember — each app gets a stable `.localhost` name, and the URL
-carries the current git branch so branches and worktrees never collide:
+numbers to remember — each app gets a stable `.localhost` name. Side branches and
+worktrees are prefixed so they never collide with the default branch:
 
-| Branch            | Frontend                                     | Backend                                          |
-| ----------------- | -------------------------------------------- | ------------------------------------------------ |
-| _(no git repo)_   | `https://returntypes.localhost`              | `https://api.returntypes.localhost`              |
-| `main`            | `https://main.returntypes.localhost`         | `https://api.main.returntypes.localhost`         |
-| `feat/tools-page` | `https://feat-tools-page.returntypes.localhost` | `https://api.feat-tools-page.returntypes.localhost` |
+| Branch            | Frontend                                        | Backend                                             |
+| ----------------- | ----------------------------------------------- | --------------------------------------------------- |
+| `main`            | `https://returntypes.localhost`                 | `https://returntypes-api.localhost`                 |
+| `feat/tools-page` | `https://feat-tools-page.returntypes.localhost` | `https://feat-tools-page.returntypes-api.localhost` |
 
-`scripts/portless-base.mjs` derives that base — branch names are slugged into a
-valid hostname label, and a detached HEAD becomes the short sha. Print the
-current one with `node scripts/portless-base.mjs`.
+`scripts/portless-name.mjs` derives those names: branch labels are slugged into
+valid hostname labels, a detached HEAD becomes the short sha, and the default
+branch (`origin/HEAD`, else `main`/`master`) is left unprefixed. Print one with
+`node scripts/portless-name.mjs returntypes-api`.
 
 ```bash
 pnpm urls        # portless list — every active route
@@ -65,5 +65,5 @@ Two caveats worth knowing:
 `rpc-demo` reads `API_URL`, so point it at the proxied backend:
 
 ```bash
-API_URL=$(pnpm dlx portless get api.returntypes) pnpm --filter @repo/backend rpc-demo
+API_URL=$(pnpm dlx portless get returntypes-api) pnpm --filter @repo/backend rpc-demo
 ```
