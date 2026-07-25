@@ -14,7 +14,10 @@ import {
 } from "./schemas";
 import { syncTools } from "./sync";
 
-const json = (schema: Parameters<typeof resolver>[0], description: string) => ({
+// Hosts need this to shut the database down cleanly; see ./db.
+export { closeDb, DATA_DIR } from "./db";
+
+const json =(schema: Parameters<typeof resolver>[0], description: string) => ({
   description,
   content: { "application/json": { schema: resolver(schema) } },
 });
@@ -123,16 +126,29 @@ export const routes = new Hono()
     },
   );
 
-const document = openApiDocument(routes, {
+/**
+ * Everything this package exposes lives under `/api`, and that prefix is part of
+ * the app rather than something a host adds: the standalone server and the
+ * frontend then serve identical URLs, and the generated document describes the
+ * paths callers actually use.
+ *
+ * `routes` stays unprefixed so the RPC client's base URL carries the `/api` —
+ * `createClient("/api").tools.$get()` rather than `client.api.tools.$get()`.
+ */
+export const app = new Hono()
+  .route("/api", routes)
+  .get("/api/openapi", async (c) => c.json(await document()))
+  .get("/api/scalar", Scalar({ url: "/api/openapi", pageTitle: "Arcade Tools Mirror" }));
+
+const document = openApiDocument(app, {
   documentation: {
     info: {
       title: "Arcade Tools Mirror",
       version: "1.0.0",
       description:
         "A local mirror of the Arcade tool catalog, stored in PGlite via Drizzle. " +
-        "`POST /seed` populates it; the read endpoints query it.",
+        "`POST /api/seed` populates it; the read endpoints query it.",
     },
-    servers: [{ url: "http://localhost:3000", description: "Local" }],
     tags: [
       { name: "seed", description: "Populate the mirror from the Arcade API." },
       { name: "tools", description: "Read the mirrored catalog." },
@@ -140,10 +156,6 @@ const document = openApiDocument(routes, {
   },
 });
 
-export const app = new Hono()
-  .route("/", routes)
-  .get("/openapi", async (c) => c.json(await document()))
-  .get("/scalar", Scalar({ url: "/openapi", pageTitle: "Arcade Tools Mirror" }));
 
 /** The type the RPC client is built from. */
 export type AppType = typeof routes;

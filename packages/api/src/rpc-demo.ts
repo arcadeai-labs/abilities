@@ -2,7 +2,12 @@
  * Exercises the typed RPC client against a running server. Every response below
  * is fully typed from `AppType` — no generics, no casts, no schema duplication.
  */
-import { client } from "./client";
+import { createClient } from "./client";
+
+// Points at the standalone server by default; set API_URL to the frontend
+// (e.g. https://returntypes.localhost/api) to exercise that instead. The base
+// carries `/api` because `routes` is registered under that prefix.
+const client = createClient(process.env.API_URL ?? "http://localhost:3000/api");
 
 const toolkitsRes = await client.toolkits.$get();
 if (!toolkitsRes.ok) throw new Error(`GET /toolkits failed: ${toolkitsRes.status}`);

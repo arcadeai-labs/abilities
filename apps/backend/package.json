@@ -2,36 +2,18 @@
   "name": "@repo/backend",
   "private": true,
   "type": "module",
-  "main": "src/app.ts",
   "scripts": {
-    "sync": "tsx --env-file-if-exists=.env index.ts",
-    "dev": "tsx watch --env-file-if-exists=.env server.ts",
-    "dev:portless": "portless $(node ../../scripts/portless-name.mjs returntypes-api) --force tsx watch --env-file-if-exists=.env server.ts",
-    "start": "tsx --env-file-if-exists=.env server.ts",
-    "rpc-demo": "tsx --env-file-if-exists=.env src/rpc-demo.ts",
-    "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio"
+    "serve": "tsx --env-file-if-exists=../../.env server.ts",
+    "serve:portless": "portless $(node ../../scripts/portless-name.mjs returntypes-api) --force tsx watch --env-file-if-exists=../../.env server.ts",
+    "typecheck": "tsc --noEmit"
   },
-  "exports": {
-    ".": "./src/app.ts",
-    "./client": "./src/client.ts"
+  "dependencies": {
+    "@hono/node-server": "^1.19.1",
+    "@repo/api": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
-    "drizzle-kit": "^0.31.10",
     "tsx": "^4.20.4",
     "typescript": "^5.9.2"
-  },
-  "dependencies": {
-    "@arcadeai/arcadejs": "^2.4.1",
-    "@electric-sql/pglite": "^0.5.4",
-    "@hono/node-server": "^1.19.1",
-    "@hono/standard-validator": "^0.3.0",
-    "@scalar/hono-api-reference": "^0.11.11",
-    "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.32",
-    "hono-openapi": "^1.3.1",
-    "zod": "^4.4.3"
   }
 }

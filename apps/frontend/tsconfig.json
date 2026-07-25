@@ -11,7 +11,9 @@
     "jsx": "react-jsx",
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["vite/client"],
+    // "node" because this app hosts @repo/api's server code (src/routes/api.$.ts),
+    // and typechecking it pulls that source into this program.
+    "types": ["vite/client", "node"],
     "paths": {
       "@/*": ["./src/*"]
     },

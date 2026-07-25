@@ -8,6 +8,7 @@
     "dev:ports": "turbo run dev",
     "build": "turbo run build",
     "start": "turbo run start",
+    "sync": "pnpm --filter @repo/api sync",
     "typecheck": "turbo run typecheck",
     "urls": "portless list"
   },
