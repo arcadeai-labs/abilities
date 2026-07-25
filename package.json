@@ -11,8 +11,7 @@
     "sync": "pnpm --filter @repo/api sync",
     "typecheck": "turbo run typecheck",
     "urls": "portless list",
-    "check": "biome check --write --unsafe .",
-    "format": "biome check --write --unsafe ."
+    "fmt": "biome check --write --unsafe ."
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.5",
