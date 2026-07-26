@@ -22,9 +22,14 @@ import {
 
 /**
  * The MCP server is a thin adapter: one tool per REST endpoint, reusing the same
- * Zod schemas the routes validate with and the same descriptions the OpenAPI
- * document carries. Tools call the routes in-process — no HTTP round trip, no
- * second implementation of any behaviour.
+ * Zod schemas the routes validate with. Tools call the routes in-process — no HTTP
+ * round trip, no second implementation of any behaviour.
+ *
+ * The descriptions, though, are *copies* of the ones in `describeRoute`, reworded
+ * for MCP's vocabulary — `toolkit` rather than `?toolkit=`, `validate_script`
+ * rather than `POST /api/validate`. So a route whose description changes has two
+ * places to change, and a route that is deleted leaves a tool here calling a path
+ * that 404s. Both have happened; check this file when you touch a route.
  */
 type RequestFn = (
   path: string,
@@ -120,9 +125,11 @@ export function createMcpServer(request: RequestFn) {
       description:
         "The ambient declarations scripts are written against: one method per tool, with its " +
         "parameters typed from the catalog and its result typed where the catalog declares a shape, " +
-        "plus `z` and `defineScript`. Everything is ambient, so a script imports nothing. This is " +
-        "byte-identical to what `validate_script` compiles against, so what you read is what gets " +
-        "checked. Filter with `toolkit` — the whole catalog is several megabytes.",
+        "plus `z` and `defineScript`. Everything is ambient, so a script imports nothing. " +
+        "Filter with `toolkit` — the whole catalog is several megabytes. Pass the same toolkits " +
+        "your script declares and this is byte-identical to what `validate_script` compiles " +
+        "against, so what you read is what gets checked; order and repeats make no difference, " +
+        "since the emitted file is sorted by namespace either way.",
       inputSchema: TypesQuerySchema.shape,
     },
     (args) => call(`/types${query(args)}`)
@@ -202,19 +209,6 @@ export function createMcpServer(request: RequestFn) {
       outputSchema: ScriptSchema.shape,
     },
     (args) => call(`/scripts/${encodeURIComponent(args.name)}`)
-  )
-
-  server.registerTool(
-    "get_script_types",
-    {
-      title: "TypeScript declarations for this script's toolkits",
-      description:
-        "The ambient declarations covering exactly the toolkits this script destructured — what " +
-        "`github` is, and what each of its tools takes and returns. Same text `validate_script` " +
-        "compiles against.",
-      inputSchema: name,
-    },
-    (args) => call(`/scripts/${encodeURIComponent(args.name)}/types`)
   )
 
   server.registerTool(
