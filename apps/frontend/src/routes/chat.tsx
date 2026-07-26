@@ -3,8 +3,8 @@
  * there is no transport to configure.
  *
  * AI Elements renders the stream: `Conversation` pins the scroll to the bottom
- * while tokens arrive and `MessageResponse` is a streaming-aware markdown
- * renderer, so partial output never flashes as broken syntax. Its `prompt-input`
+ * while tokens arrive, `MessageResponse` is a streaming-aware markdown renderer,
+ * and `Tool` shows each MCP tool call as a collapsible panel. Its `prompt-input`
  * component is deliberately not used — it is written against Radix-flavoured
  * shadcn (`DropdownMenuItem.onSelect(e: Event)`, `HoverCard.openDelay`) and this
  * app's `components/ui` are Base UI (`style: "base-rhea"` in components.json).
@@ -12,6 +12,7 @@
  */
 import { useChat } from "@ai-sdk/react"
 import { createFileRoute } from "@tanstack/react-router"
+import { isToolUIPart } from "ai"
 import { useState } from "react"
 import {
   Conversation,
@@ -24,6 +25,13 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message"
+import {
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolInput,
+  ToolOutput,
+} from "@/components/ai-elements/tool"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 
@@ -46,20 +54,60 @@ function Chat() {
         <ConversationContent>
           {messages.length === 0 ? (
             <ConversationEmptyState
-              description="Streamed from /api/chat with Claude Sonnet 5."
+              description="Streamed from /api/chat — tools come from /api/mcp."
               title="Ask the agent"
             />
           ) : (
             messages.map((message) => (
               <Message from={message.role} key={message.id}>
                 <MessageContent>
-                  {message.parts.map((part, index) =>
-                    part.type === "text" ? (
+                  {message.parts.map((part, index) => {
+                    if (part.type === "text") {
                       // Parts are positional within a message and carry no id.
-                      // biome-ignore lint/suspicious/noArrayIndexKey: no stable id
-                      <MessageResponse key={index}>{part.text}</MessageResponse>
-                    ) : null
-                  )}
+                      return (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: no stable id
+                        <MessageResponse key={index}>
+                          {part.text}
+                        </MessageResponse>
+                      )
+                    }
+
+                    if (isToolUIPart(part)) {
+                      const done =
+                        part.state === "output-available" ||
+                        part.state === "output-error"
+                      return (
+                        <Tool defaultOpen={done} key={part.toolCallId}>
+                          {part.type === "dynamic-tool" ? (
+                            <ToolHeader
+                              state={part.state}
+                              toolName={part.toolName}
+                              type={part.type}
+                            />
+                          ) : (
+                            <ToolHeader state={part.state} type={part.type} />
+                          )}
+                          <ToolContent>
+                            <ToolInput input={part.input} />
+                            <ToolOutput
+                              errorText={
+                                part.state === "output-error"
+                                  ? part.errorText
+                                  : undefined
+                              }
+                              output={
+                                part.state === "output-available"
+                                  ? part.output
+                                  : undefined
+                              }
+                            />
+                          </ToolContent>
+                        </Tool>
+                      )
+                    }
+
+                    return null
+                  })}
                 </MessageContent>
               </Message>
             ))

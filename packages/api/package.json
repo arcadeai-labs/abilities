@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.20",
+    "@ai-sdk/mcp": "^2.0.16",
     "@arcadeai/arcadejs": "^2.4.1",
     "@electric-sql/pglite": "^0.5.4",
     "@hono/mcp": "^0.3.1",
