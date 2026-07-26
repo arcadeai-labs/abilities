@@ -5,7 +5,12 @@ import { createMiddleware } from "hono/factory"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { z } from "zod"
 import { agentHandler } from "./agent"
-import { coverage, loadCatalog } from "./catalog"
+import {
+  authorizationFor,
+  type Catalog,
+  coverage,
+  loadCatalog,
+} from "./catalog"
 import { generateTypes } from "./codegen"
 import { db } from "./db"
 import { revalidateAll, runScript, upsertScript } from "./execute"
@@ -372,7 +377,7 @@ export const routes = new Hono()
         {
           total: rows.length,
           snapshotId: catalog.snapshotId,
-          scripts: rows.map((row) => describeScript(row, catalog.snapshotId)),
+          scripts: rows.map((row) => describeScript(row, catalog)),
         },
         200
       )
@@ -517,7 +522,7 @@ async function findScript(key: string) {
   return row
 }
 
-function describeScript(row: ScriptRow, snapshotId: string) {
+function describeScript(row: ScriptRow, catalog: Catalog) {
   return {
     id: row.id,
     name: row.name,
@@ -528,15 +533,19 @@ function describeScript(row: ScriptRow, snapshotId: string) {
     version: row.version,
     grant: row.toolGrant,
     toolkits: row.toolkits,
+    authorization: authorizationFor(
+      { toolkits: row.toolkits, grant: row.toolGrant },
+      catalog
+    ),
     snapshotId: row.snapshotId,
-    stale: row.snapshotId !== snapshotId,
+    stale: row.snapshotId !== catalog.snapshotId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   }
 }
 
 const present = async (row: ScriptRow) =>
-  describeScript(row, (await loadCatalog()).snapshotId)
+  describeScript(row, await loadCatalog())
 
 /**
  * Everything this package exposes lives under `/api`, and that prefix is part of

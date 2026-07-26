@@ -1,10 +1,16 @@
+/**
+ * The RPC calls the browser makes: list, read, run, delete.
+ *
+ * Nothing here writes a script. Storing one means validating it against the
+ * catalog first, and that whole loop belongs to the agent — which reaches the same
+ * routes through `/api/mcp`.
+ */
 import {
   type UseQueryOptions,
   useMutation,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
-import { z } from "zod"
 import { api } from "@/lib/api"
 
 export const scriptKeys = {
@@ -16,25 +22,6 @@ export const scriptKeys = {
 export const toolkitKeys = {
   all: ["toolkits"],
   list: () => [...toolkitKeys.all, "list"],
-}
-
-const JsonObjectSchema = z.record(z.string(), z.unknown())
-
-export function parseJsonObject(text: string): Record<string, unknown> {
-  let value: unknown
-  try {
-    value = JSON.parse(text)
-  } catch {
-    throw new Error("Invalid JSON")
-  }
-  return JsonObjectSchema.parse(value)
-}
-
-export function parseToolkits(text: string): string[] {
-  return text
-    .split(/[\s,]+/)
-    .map((s) => s.trim())
-    .filter(Boolean)
 }
 
 type ClientQueryOptions<T> = Omit<
@@ -81,77 +68,6 @@ export function useScript(
       return res.json()
     },
     ...options,
-  })
-}
-
-export type UpsertScriptBody = {
-  description?: string
-  input: Record<string, unknown>
-  output: Record<string, unknown>
-  toolkits: string[]
-  run: string
-}
-
-export type UpsertScriptResult =
-  | { kind: "ok"; script: Script; created: boolean }
-  | {
-      kind: "invalid"
-      validation: {
-        ok: boolean
-        diagnostics: { code: string; message: string }[]
-      }
-    }
-  | { kind: "bad_name"; message: string }
-
-export type ValidationResult = Awaited<ReturnType<typeof fetchValidate>>
-
-async function fetchValidate(body: UpsertScriptBody) {
-  const res = await api.validate.$post({ json: body })
-  if (!res.ok) {
-    throw new Error("Failed to validate script")
-  }
-  return res.json()
-}
-
-export function useValidateScript() {
-  return useMutation({
-    mutationFn: (body: UpsertScriptBody) => fetchValidate(body),
-  })
-}
-
-export function useUpsertScript() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({
-      name,
-      body,
-    }: {
-      name: string
-      body: UpsertScriptBody
-    }): Promise<UpsertScriptResult> => {
-      const res = await api.scripts[":name"].$put({
-        param: { name },
-        json: body,
-      })
-      if (res.status === 422) {
-        return { kind: "invalid", validation: await res.json() }
-      }
-      if (res.status === 400) {
-        return { kind: "bad_name", message: (await res.json()).message }
-      }
-      if (res.status === 201) {
-        return { kind: "ok", script: await res.json(), created: true }
-      }
-      if (res.status === 200) {
-        return { kind: "ok", script: await res.json(), created: false }
-      }
-      throw new Error("Failed to save script")
-    },
-    onSuccess: (result) => {
-      if (result.kind === "ok") {
-        void queryClient.invalidateQueries({ queryKey: scriptKeys.all })
-      }
-    },
   })
 }
 

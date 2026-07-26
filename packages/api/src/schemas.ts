@@ -242,6 +242,31 @@ export const ScriptSchema = z
     toolkits: z
       .array(z.string())
       .describe("Toolkits put in scope, as submitted."),
+    authorization: z
+      .array(
+        z.object({
+          toolkit: z.string(),
+          tools: z
+            .array(z.string())
+            .describe("Granted tools from this toolkit, by their script name."),
+          scopes: z
+            .array(z.string())
+            .describe(
+              "The OAuth scopes those tools need. Empty is not the same as `requiresAuth: false` — " +
+                "some providers demand an account without declaring scopes per tool."
+            ),
+          requiresAuth: z
+            .boolean()
+            .describe(
+              "Whether any granted tool here needs an authorized account."
+            ),
+        })
+      )
+      .describe(
+        "What running this will ask the end user to authorize, per declared toolkit. " +
+          "Derived from the grant against the current catalog, so a toolkit the script " +
+          "never calls contributes nothing."
+      ),
     snapshotId: z.string(),
     stale: z
       .boolean()

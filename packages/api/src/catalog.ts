@@ -28,6 +28,14 @@ export type ToolRuntime = {
    */
   output: Spec | null
   requiresAuth: boolean
+  /**
+   * The OAuth scopes this one tool needs, straight off the mirrored requirements.
+   *
+   * Per tool, not per toolkit, because that distinction is the entire reason the
+   * grant is read off the calls: Gmail's 30 tools span 7 scopes, and a script that
+   * only lists mail should ask for one of them.
+   */
+  scopes: string[]
 }
 
 export type Catalog = {
@@ -91,6 +99,7 @@ export async function loadCatalog(): Promise<Catalog> {
           ? specFromValueSchema(row.output?.value_schema)
           : null,
         requiresAuth: Boolean(row.requirements?.authorization),
+        scopes: row.requirements?.authorization?.oauth2?.scopes ?? [],
       },
     ])
   )
@@ -177,4 +186,53 @@ export async function coverage(): Promise<{
     generated: sum(list.filter((row) => row.generated)),
     toolkits: list,
   }
+}
+
+/**
+ * What a stored script will ask its end user to authorize, per toolkit it declared.
+ *
+ * Grouped by the namespace the author wrote, because that is the name they see — but
+ * the scopes come from the tools the grant actually names, not from everything the
+ * toolkit could do. A declared toolkit that is never called contributes no scopes,
+ * which is what makes an over-broad `toolkits` harmless and a call meaningful.
+ *
+ * `requiresAuth` is separate from the scope list on purpose: a provider can demand
+ * authorization while declaring no scopes per tool — Github does — and "needs you to
+ * connect an account" is a different answer from "needs nothing".
+ */
+export function authorizationFor(
+  script: { toolkits: string[]; grant: Record<string, string> },
+  catalog: Catalog
+) {
+  const byToolkit = new Map<
+    string,
+    { tools: string[]; scopes: Set<string>; requiresAuth: boolean }
+  >(
+    script.toolkits.map((toolkit) => [
+      toolkit,
+      { tools: [], scopes: new Set<string>(), requiresAuth: false },
+    ])
+  )
+
+  for (const [alias, qualifiedName] of Object.entries(script.grant)) {
+    // `github.getIssue` — everything before the dot is the declared namespace.
+    const namespace = alias.split(".")[0] ?? alias
+    const entry = byToolkit.get(namespace) ?? {
+      tools: [],
+      scopes: new Set<string>(),
+      requiresAuth: false,
+    }
+    const tool = catalog.runtime.get(qualifiedName)
+    entry.tools.push(alias)
+    entry.requiresAuth = entry.requiresAuth || Boolean(tool?.requiresAuth)
+    for (const scope of tool?.scopes ?? []) entry.scopes.add(scope)
+    byToolkit.set(namespace, entry)
+  }
+
+  return [...byToolkit].map(([toolkit, entry]) => ({
+    toolkit,
+    tools: entry.tools.sort(),
+    scopes: [...entry.scopes].sort(),
+    requiresAuth: entry.requiresAuth,
+  }))
 }
