@@ -210,9 +210,9 @@ export const routes = new Hono()
     }),
     validator("json", ScriptParamsSchema),
     async (c) => {
-      const { paths: _paths, contract: _contract, source: _source, ...result } = await validateScript(
-        c.req.valid("json") as never,
-      );
+      const { contract: _contract, ...result } = await validateScript(c.req.valid("json") as never);
+      // `source` rides along: it is the module that was checked, and the only place
+      // to see it — a stored script keeps its parts, not the assembly.
       return c.json(result, 200);
     },
   )
@@ -270,9 +270,9 @@ export const routes = new Hono()
     describeRoute({
       summary: "Read a script",
       description:
-        "Everything that went in: the `run` method, the `input`/`output`/`expect` schemas as submitted, " +
-        "the derived grant, and the assembled module. Straight out of the database — nothing is " +
-        "re-derived from source on read.",
+        "Everything that went in: the `run` method and the `input`/`output`/`expect` schemas exactly " +
+        "as submitted, plus the derived grant. Straight out of the database — nothing is re-derived, " +
+        "and nothing is stored that the request body did not carry.",
       tags: ["scripts"],
       responses: {
         200: json(ScriptSchema, "The script."),
@@ -398,10 +398,8 @@ function describeScript(row: ScriptRow, snapshotId: string) {
     output: row.outputSchema,
     expect: row.expectSchemas,
     version: row.version,
-    grant: [...new Set(Object.values(row.toolGrant))].sort(),
-    paths: row.toolGrant,
+    grant: row.toolGrant,
     namespaces: row.namespaces,
-    source: row.source,
     snapshotId: row.snapshotId,
     stale: row.snapshotId !== snapshotId,
     createdAt: row.createdAt.toISOString(),

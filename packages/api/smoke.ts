@@ -81,10 +81,10 @@ line("POST /api/validate   — a run that contradicts its own output schema");
   });
   const r = body as unknown as {
     ok: boolean;
-    grant: string[];
+    grant: Record<string, string>;
     diagnostics: { code: string; message: string; start: { line: number } }[];
   };
-  console.log(`  ${status}  ok=${r.ok}  grant=[${r.grant}]`);
+  console.log(`  ${status}  ok=${r.ok}  grant=${JSON.stringify(r.grant)}`);
   for (const d of r.diagnostics) {
     console.log(`  ${d.code} at run line ${d.start.line}: ${d.message.slice(0, 110)}`);
   }
@@ -94,9 +94,9 @@ line(`PUT /api/scripts/${NAME}   — upsert, twice`);
 {
   const first = await call("PUT", `/api/scripts/${NAME}`, PARAMS);
   const second = await call("PUT", `/api/scripts/${NAME}`, PARAMS);
-  const s = second.body as unknown as { version: number; grant: string[] };
+  const s = second.body as unknown as { version: number; grant: Record<string, string> };
   console.log(`  first ${first.status} (created)   second ${second.status} (replaced, v${s.version})`);
-  console.log(`  grant=[${s.grant}]`);
+  console.log(`  grant=${JSON.stringify(s.grant)}`);
 }
 
 line(`GET /api/scripts/${NAME}   — every aspect, straight from the database`);
@@ -107,7 +107,7 @@ line(`GET /api/scripts/${NAME}   — every aspect, straight from the database`);
   console.log(`  input:  ${JSON.stringify(s.input)}`);
   console.log(`  output: ${JSON.stringify(s.output)}`);
   console.log(`  expect: ${JSON.stringify(s.expect)}`);
-  console.log(`  paths:  ${JSON.stringify(s.paths)}`);
+  console.log(`  grant:  ${JSON.stringify(s.grant)}`);
   console.log(`  run[0]: ${String(s.run).split("\n")[0]}`);
 }
 

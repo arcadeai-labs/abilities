@@ -40,12 +40,13 @@ export type NewToolRow = typeof tools.$inferInsert;
  * invariant rather than just rows: **every script in it type-checks against its
  * catalog snapshot**. There is no `invalid` state to represent — a script can only
  * go *stale*, when a later sync changes the tools underneath it, which is why
- * `snapshotId` is recorded alongside the source.
+ * `snapshotId` is recorded alongside it.
  *
- * `toolGrant` and `contract` are derived from the source at write time and are what
- * the sandbox actually enforces at run time. Re-deriving them per run would mean
- * parsing untrusted source on the hot path; storing them means the capability set
- * is a column you can query and audit.
+ * The columns are the request body plus what validation derived from it. Nothing
+ * else: the assembled module is rebuilt from the parts whenever it is wanted, and a
+ * list of upstream tools is `Object.values(toolGrant)`. `toolGrant` and `contract`
+ * are stored rather than re-derived per run because they are what the sandbox
+ * enforces, and re-deriving would put a parse of untrusted text on the hot path.
  */
 export const scripts = pgTable("scripts", {
   id: text("id").primaryKey(),
@@ -60,17 +61,22 @@ export const scripts = pgTable("scripts", {
   /** Declared shapes for tools the catalog leaves unspecified, keyed by tool path. */
   expectSchemas: jsonb("expect_schemas").$type<Record<string, unknown>>().notNull().default({}),
   /**
-   * The module assembled from the columns above. Derived, stored for auditability:
-   * it is what actually type-checked.
+   * Type-erased source, ready for the sandbox.
+   *
+   * Derived from the columns above, but stored rather than rebuilt per run: this is
+   * the artifact that actually executes, so pinning it guarantees the bytes that
+   * run are the bytes that passed validation. The assembled module it came from is
+   * not stored — re-deriving it from the parts is free and cannot drift.
    */
-  source: text("source").notNull(),
-  /** Type-erased source, ready for the sandbox. */
   compiled: text("compiled").notNull(),
-  sourceHash: text("source_hash").notNull(),
-  /** `github.getIssue` → `Github.GetIssue`: the runtime allowlist. */
+  /**
+   * `github.getIssue` → `Github.GetIssue`: the capability grant, and the runtime
+   * allowlist the sandbox builds the guest's tool surface from. The list of
+   * upstream tools is just its values, so only the map is stored.
+   */
   toolGrant: jsonb("tool_grant").$type<Record<string, string>>().notNull(),
   namespaces: jsonb("namespaces").$type<string[]>().notNull(),
-  /** `input`, `output` and `expect` specs, read out of the source without running it. */
+  /** `input`, `output` and `expect` as the IR the runtime validator checks against. */
   contract: jsonb("contract").$type<unknown>().notNull(),
   /** The catalog this was validated against; a mismatch means "revalidate me". */
   snapshotId: text("snapshot_id").notNull(),

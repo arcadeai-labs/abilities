@@ -48,10 +48,12 @@ export type ValidationResult = {
   diagnostics: Diagnostic[];
   /** Toolkit namespaces the script destructured. */
   namespaces: string[];
-  /** Upstream qualified names the script may call. The runtime allowlist. */
-  grant: string[];
-  /** `github.getIssue` → `Github.GetIssue`, for the sandbox bridge. */
-  paths: Record<string, string>;
+  /**
+   * `github.getIssue` → `Github.GetIssue`. The capability grant: which tools the
+   * script may call, and what each resolves to upstream. `Object.values` is the
+   * list of upstream tools, so there is no separate array.
+   */
+  grant: Record<string, string>;
   /** Which granted tools declare an output shape upstream. */
   outputCoverage: ToolCoverage[];
   contract: Contract | null;
@@ -152,8 +154,7 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
     snapshotId: catalog.snapshotId,
     diagnostics: [],
     namespaces: [],
-    grant: [],
-    paths: {},
+    grant: {},
     outputCoverage: [],
     contract: null,
     source: null,
@@ -256,7 +257,7 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
   const diagnostics = raw.map((diagnostic) => toAuthorCoordinates(diagnostic, runLineOffset));
 
   // ── the grant, resolved ──────────────────────────────────────────────────
-  const paths: Record<string, string> = {};
+  const grant: Record<string, string> = {};
   const outputCoverage: ToolCoverage[] = [];
   const byQualifiedName = new Map(catalog.rows.map((row) => [row.qualifiedName, row] as const));
 
@@ -265,7 +266,7 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
     // An unresolvable path is already a type error ("property does not exist"),
     // so it needs no second diagnostic — but it must not reach the grant.
     if (!binding) continue;
-    paths[path] = binding.qualifiedName;
+    grant[path] = binding.qualifiedName;
     outputCoverage.push({
       path,
       qualifiedName: binding.qualifiedName,
@@ -276,7 +277,7 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
   // An `expect` for a tool the script never calls is a stale declaration; say so
   // rather than silently ignoring it.
   for (const path of Object.keys(contract.expect)) {
-    if (paths[path]) continue;
+    if (grant[path]) continue;
     diagnostics.push({
       category: "contract",
       code: "contract/unused-expect",
@@ -294,8 +295,7 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
     snapshotId: catalog.snapshotId,
     diagnostics,
     namespaces,
-    grant: [...new Set(Object.values(paths))].sort(),
-    paths,
+    grant,
     outputCoverage: outputCoverage.sort((a, b) => a.path.localeCompare(b.path)),
     contract,
     source,

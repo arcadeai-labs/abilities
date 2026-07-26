@@ -130,7 +130,10 @@ export const ValidationSchema = z
     snapshotId: z.string().describe("The catalog snapshot this was checked against."),
     diagnostics: z.array(DiagnosticSchema),
     namespaces: z.array(z.string()).describe("Toolkits the script destructured."),
-    grant: z.array(z.string()).describe("Upstream tools the script may call."),
+    grant: z
+      .record(z.string(), z.string())
+      .describe("`github.getIssue` to `Github.GetIssue` — every tool this script may call."),
+    source: z.string().nullable().describe("The module that was checked, assembled from the parts."),
     outputCoverage: z.array(
       z.object({
         path: z.string(),

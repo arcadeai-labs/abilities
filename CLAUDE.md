@@ -131,6 +131,15 @@ and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
   not `declare module`), so `src/policy.ts` rejects **every** import rather than
   allow-listing one. And reading a script back is a plain database read — the
   submitted schemas are stored verbatim, so nothing is re-derived from source.
+- The table stores the request body plus what validation derived, and nothing else.
+  The assembled module is not a column: it is a pure function of the parts, so it is
+  rebuilt when wanted (`POST /api/validate` returns it) rather than kept where it
+  could drift. `compiled` *is* stored, because it is the artifact that executes and
+  pinning it means the bytes that run are the bytes that were checked.
+- One `grant`, and it is a map: `{"github.getIssue": "Github.GetIssue"}`. The
+  sandbox builds the guest's tool surface from it and the authorization pre-flight
+  reads `Object.values`, so a parallel array of upstream names would just be a lossy
+  view of the same column.
 - Splicing text into generated code is a template injection: a `run` value that
   closes its own method early would leave statements at the module's top level.
   `checkAssembly` requires the assembled file to be exactly one `defineScript` call,

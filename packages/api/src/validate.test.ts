@@ -65,8 +65,7 @@ describe("accepts", () => {
     const result = await validateScript(script(`  await github.whoAmI({});`));
 
     expect(result.ok).toBe(true);
-    expect(result.grant).toEqual(["Github.WhoAmI"]);
-    expect(result.paths).toEqual({ "github.whoAmI": "Github.WhoAmI" });
+    expect(result.grant).toEqual({ "github.whoAmI": "Github.WhoAmI" });
   });
 
   it("reports which granted tools leave their output unspecified", async () => {
@@ -190,7 +189,7 @@ describe("rejects", () => {
     expect(result.ok).toBe(false);
     // Not merely a policy error — the identifier does not exist at all.
     expect(codes(result.diagnostics)).toContain("TS2304");
-    expect(result.grant).not.toContain("Github.WhoAmI");
+    expect(Object.values(result.grant)).not.toContain("Github.WhoAmI");
   });
 
   it("aliasing a toolkit, which would hide the call from grant extraction", async () => {

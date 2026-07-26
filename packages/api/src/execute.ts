@@ -9,7 +9,6 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { createHash } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { checkAuthorization, executeTool, ToolExecutionError } from "./arcade";
 import { loadCatalog } from "./catalog";
@@ -21,7 +20,6 @@ import type { ScriptParams } from "./assemble";
 import { type Contract, validateScript, type ValidationResult } from "./validate";
 
 const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
-const hash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 32);
 
 export type StoreResult =
   | { ok: true; script: ScriptRow; created: boolean }
@@ -52,10 +50,8 @@ export async function upsertScript(input: {
     inputSchema: input.params.input,
     outputSchema: input.params.output,
     expectSchemas: (input.params.expect ?? {}) as Record<string, unknown>,
-    source: validation.source,
     compiled: compileScript(validation.source),
-    sourceHash: hash(validation.source),
-    toolGrant: validation.paths,
+    toolGrant: validation.grant,
     namespaces: validation.namespaces,
     contract: validation.contract,
     snapshotId: validation.snapshotId,
@@ -278,7 +274,7 @@ export async function revalidateAll(): Promise<{
       if (row.snapshotId !== catalog.snapshotId) {
         await db
           .update(scripts)
-          .set({ snapshotId: catalog.snapshotId, toolGrant: validation.paths })
+          .set({ snapshotId: catalog.snapshotId, toolGrant: validation.grant })
           .where(eq(scripts.id, row.id));
       }
       continue;
