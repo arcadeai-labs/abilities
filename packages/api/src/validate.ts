@@ -274,6 +274,21 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
     });
   }
 
+  // A toolkit can be destructured and never called. It grants nothing — the guest's
+  // tool surface is built from `grant`, so the binding is dead — and the namespace
+  // list is derived from the grant, so it would otherwise vanish without comment.
+  for (const namespace of namespaces) {
+    if (Object.keys(grant).some((path) => path.startsWith(`${namespace}.`))) continue;
+    diagnostics.push({
+      category: "policy",
+      code: "policy/unused-toolkit",
+      severity: "warning",
+      message: `\`${namespace}\` is destructured but never called, so it grants nothing.`,
+      start: point(1, 1),
+      end: point(1, 1),
+    });
+  }
+
   // An `expect` for a tool the script never calls is a stale declaration; say so
   // rather than silently ignoring it.
   for (const path of Object.keys(contract.expect)) {

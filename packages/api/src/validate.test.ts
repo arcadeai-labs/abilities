@@ -324,6 +324,15 @@ describe("rejects", () => {
 });
 
 describe("warns", () => {
+  it("about a toolkit destructured but never called", async () => {
+    // It grants nothing, and the namespace list is derived from the grant, so the
+    // binding would otherwise disappear without comment.
+    const result = await validateScript(script(`  log("hi");`));
+
+    expect(result.ok).toBe(true);
+    expect(codes(result.diagnostics)).toContain("policy/unused-toolkit");
+  });
+
   it("about an `expect` for a tool the script never calls", async () => {
     const result = await validateScript(
       script(`  log("hi");`, {

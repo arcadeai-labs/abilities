@@ -16,10 +16,18 @@ import { compileScript } from "./compile";
 import { db } from "./db";
 import { type Spec, validateSpec, type Violation } from "./schema-dsl";
 import { runs, type ScriptRow, scripts } from "./schema";
-import type { ScriptParams } from "./assemble";
-import { type Contract, validateScript, type ValidationResult } from "./validate";
+import { contractFrom, type ScriptParams } from "./assemble";
+import { validateScript, type ValidationResult } from "./validate";
 
 const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
+
+/** The request body a stored row came from; every column here was submitted. */
+export const paramsOf = (row: ScriptRow): ScriptParams => ({
+  input: row.inputSchema as ScriptParams["input"],
+  output: row.outputSchema as ScriptParams["output"],
+  expect: row.expectSchemas as ScriptParams["expect"],
+  run: row.run,
+});
 
 export type StoreResult =
   | { ok: true; script: ScriptRow; created: boolean }
@@ -52,8 +60,6 @@ export async function upsertScript(input: {
     expectSchemas: (input.params.expect ?? {}) as Record<string, unknown>,
     compiled: compileScript(validation.source),
     toolGrant: validation.grant,
-    namespaces: validation.namespaces,
-    contract: validation.contract,
     snapshotId: validation.snapshotId,
     updatedAt: now,
   };
@@ -104,8 +110,12 @@ export async function runScript(options: {
   userId: string;
 }): Promise<RunReport> {
   const catalog = await loadCatalog();
-  const contract = options.script.contract as Contract;
   const grant = options.script.toolGrant;
+
+  // Rebuilt from the stored JSON Schemas rather than kept as a column: the row was
+  // validated through this same conversion, so it cannot disagree with itself.
+  const { contract } = contractFrom(paramsOf(options.script));
+  if (!contract) throw new Error(`script ${options.script.name} has an unreadable contract`);
 
   const runId = id("run");
   const startedAt = new Date();
@@ -264,12 +274,7 @@ export async function revalidateAll(): Promise<{
   const stale: { id: string; name: string; diagnostics: number; firstError: string | null }[] = [];
 
   for (const row of rows) {
-    const validation = await validateScript({
-      input: row.inputSchema as never,
-      output: row.outputSchema as never,
-      expect: row.expectSchemas as never,
-      run: row.run,
-    });
+    const validation = await validateScript(paramsOf(row));
     if (validation.ok) {
       if (row.snapshotId !== catalog.snapshotId) {
         await db

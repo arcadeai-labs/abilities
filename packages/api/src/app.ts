@@ -304,7 +304,7 @@ export const routes = new Hono()
       if (!row) return c.json({ error: "not_found", message: "No such script." }, 404);
 
       const catalog = await loadCatalog();
-      const scoped = row.namespaces.flatMap((namespace) => catalog.byNamespace.get(namespace) ?? []);
+      const scoped = namespacesOf(row).flatMap((ns) => catalog.byNamespace.get(ns) ?? []);
       c.header("Content-Type", "text/plain; charset=utf-8");
       c.header("X-Catalog-Snapshot", catalog.snapshotId);
       return c.body(generateTypes(scoped, catalog.nameMap).source, 200);
@@ -382,6 +382,11 @@ export const routes = new Hono()
     async (c) => c.json(await revalidateAll(), 200),
   );
 
+/** The toolkits a grant touches — `github.getIssue` contributes `github`. */
+const namespacesOf = (row: ScriptRow): string[] => [
+  ...new Set(Object.keys(row.toolGrant).map((path) => path.split(".")[0]!)),
+].sort();
+
 /** Scripts are addressed by name; `id` stays internal, for run records to point at. */
 async function findScript(name: string) {
   const [row] = await db.select().from(scripts).where(eq(scripts.name, name));
@@ -399,7 +404,7 @@ function describeScript(row: ScriptRow, snapshotId: string) {
     expect: row.expectSchemas,
     version: row.version,
     grant: row.toolGrant,
-    namespaces: row.namespaces,
+    namespaces: namespacesOf(row),
     snapshotId: row.snapshotId,
     stale: row.snapshotId !== snapshotId,
     createdAt: row.createdAt.toISOString(),

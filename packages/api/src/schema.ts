@@ -42,11 +42,14 @@ export type NewToolRow = typeof tools.$inferInsert;
  * go *stale*, when a later sync changes the tools underneath it, which is why
  * `snapshotId` is recorded alongside it.
  *
- * The columns are the request body plus what validation derived from it. Nothing
- * else: the assembled module is rebuilt from the parts whenever it is wanted, and a
- * list of upstream tools is `Object.values(toolGrant)`. `toolGrant` and `contract`
- * are stored rather than re-derived per run because they are what the sandbox
- * enforces, and re-deriving would put a parse of untrusted text on the hot path.
+ * The columns are the request body plus the two things validation found that the
+ * body does not contain: `toolGrant`, which takes a parse of the `run` text to
+ * recover, and `snapshotId`. Everything else is rebuilt on demand — the assembled
+ * module from the parts, the contract from the JSON Schemas, the toolkit namespaces
+ * from the grant's keys — so there is no second copy to drift.
+ *
+ * `compiled` is the one deliberate exception: it is the artifact that executes, so
+ * pinning it means the bytes that run are the bytes that were checked.
  */
 export const scripts = pgTable("scripts", {
   id: text("id").primaryKey(),
@@ -75,9 +78,6 @@ export const scripts = pgTable("scripts", {
    * upstream tools is just its values, so only the map is stored.
    */
   toolGrant: jsonb("tool_grant").$type<Record<string, string>>().notNull(),
-  namespaces: jsonb("namespaces").$type<string[]>().notNull(),
-  /** `input`, `output` and `expect` as the IR the runtime validator checks against. */
-  contract: jsonb("contract").$type<unknown>().notNull(),
   /** The catalog this was validated against; a mismatch means "revalidate me". */
   snapshotId: text("snapshot_id").notNull(),
   version: integer("version").notNull().default(1),

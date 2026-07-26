@@ -54,6 +54,47 @@ const contractError = (message: string, code = "contract/invalid-schema"): Diagn
 });
 
 export function assemble(params: ScriptParams): AssembleResult {
+  const { contract, diagnostics } = contractFrom(params);
+
+  if (typeof params.run !== "string" || params.run.trim() === "") {
+    diagnostics.push(
+      contractError("`run` must be the method source, e.g. `async run(input, { log }) { … }`.", "contract/missing-run"),
+    );
+  }
+
+  if (!contract || diagnostics.length > 0) return { ok: false, diagnostics };
+
+  const preamble = [
+    "defineScript({",
+    `input: ${specToSource(contract.input)},`,
+    `output: ${specToSource(contract.output)},`,
+    ...(Object.keys(contract.expect).length > 0
+      ? [
+          `expect: { ${Object.entries(contract.expect)
+            .map(([path, spec]) => `${JSON.stringify(path)}: ${specToSource(spec)}`)
+            .join(", ")} },`,
+        ]
+      : []),
+  ];
+
+  const source = [...preamble, params.run.replace(/\s+$/, ""), "});", ""].join("\n");
+
+  return { ok: true, assembled: { source, contract, runLineOffset: preamble.length } };
+}
+
+/**
+ * Turns the submitted JSON Schemas into the IR the runtime validator checks
+ * against.
+ *
+ * Both the write path and the run path call this, so the contract enforced on a
+ * live run is derived exactly like the one that was type-checked. That is why it is
+ * worth deriving per run rather than storing a copy: there is no second code path
+ * for a stored copy to drift from, and the conversion is pure string-shuffling.
+ */
+export function contractFrom(params: ScriptParams): {
+  contract: Contract | null;
+  diagnostics: Diagnostic[];
+} {
   const diagnostics: Diagnostic[] = [];
 
   const read = (schema: JsonSchema | undefined, label: string): Spec | null => {
@@ -75,33 +116,7 @@ export function assemble(params: ScriptParams): AssembleResult {
     if (spec) expect[path] = spec;
   }
 
-  if (typeof params.run !== "string" || params.run.trim() === "") {
-    diagnostics.push(
-      contractError("`run` must be the method source, e.g. `async run(input, { log }) { … }`.", "contract/missing-run"),
-    );
-  }
-
-  if (!input || !output || diagnostics.length > 0) return { ok: false, diagnostics };
-
-  const preamble = [
-    "defineScript({",
-    `input: ${specToSource(input)},`,
-    `output: ${specToSource(output)},`,
-    ...(Object.keys(expect).length > 0
-      ? [
-          `expect: { ${Object.entries(expect)
-            .map(([path, spec]) => `${JSON.stringify(path)}: ${specToSource(spec)}`)
-            .join(", ")} },`,
-        ]
-      : []),
-  ];
-
-  const source = [...preamble, params.run.replace(/\s+$/, ""), "});", ""].join("\n");
-
-  return {
-    ok: true,
-    assembled: { source, contract: { input, output, expect }, runLineOffset: preamble.length },
-  };
+  return { contract: input && output ? { input, output, expect } : null, diagnostics };
 }
 
 /**

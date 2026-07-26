@@ -131,11 +131,14 @@ and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
   not `declare module`), so `src/policy.ts` rejects **every** import rather than
   allow-listing one. And reading a script back is a plain database read — the
   submitted schemas are stored verbatim, so nothing is re-derived from source.
-- The table stores the request body plus what validation derived, and nothing else.
-  The assembled module is not a column: it is a pure function of the parts, so it is
-  rebuilt when wanted (`POST /api/validate` returns it) rather than kept where it
-  could drift. `compiled` *is* stored, because it is the artifact that executes and
-  pinning it means the bytes that run are the bytes that were checked.
+- The table stores the request body plus the two things validation found that the
+  body does not contain: `toolGrant`, which takes a parse of `run` to recover, and
+  `snapshotId`. The assembled module, the contract IR and the toolkit namespaces are
+  all pure functions of those, so they are rebuilt on demand rather than kept where
+  they could drift — `contractFrom` runs on the write path *and* the run path, so a
+  live run enforces a contract derived exactly like the one that type-checked.
+  `compiled` is the one deliberate cache, because it is the artifact that executes
+  and pinning it means the bytes that run are the bytes that were checked.
 - One `grant`, and it is a map: `{"github.getIssue": "Github.GetIssue"}`. The
   sandbox builds the guest's tool surface from it and the authorization pre-flight
   reads `Object.values`, so a parallel array of upstream names would just be a lossy

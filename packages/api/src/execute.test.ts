@@ -71,7 +71,6 @@ describe("storing", () => {
     });
 
     expect(script.toolGrant).toEqual({ "math.add": "Math.Add" });
-    expect(script.namespaces).toEqual(["math"]);
     expect(script.version).toBe(1);
   });
 
