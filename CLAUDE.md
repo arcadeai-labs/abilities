@@ -26,6 +26,11 @@ https://returntypes.localhost/api     the Hono API (/api/scalar, /api/openapi)
 Do not add hardcoded ports or `--port` flags to dev scripts; portless assigns the
 port and injects `PORT`/`HOST` (and `--port` for Vite).
 
+Starting the frontend opens that URL in a browser. `server.open` in
+`apps/frontend/vite.config.ts` reads portless's `PORTLESS_URL` so it opens the
+proxied host rather than the raw Vite port, and falls back to the plain port under
+`pnpm dev:ports`. `BROWSER=none` turns it off; Vite skips it on restarts.
+
 Service names come from `scripts/portless-name.mjs`, which prefixes the git branch
 on every branch except the default one:
 

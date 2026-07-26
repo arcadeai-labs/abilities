@@ -35,6 +35,20 @@ const closeDb = (): Plugin => ({
 })
 
 const config = defineConfig({
+  server: {
+    /**
+     * Open the URL you actually use. Under `pnpm dev` this server sits behind the
+     * portless proxy, which injects `PORTLESS_URL`; the raw Vite port still serves
+     * the app but on a different origin, without HTTPS, and it is not the URL
+     * anything else in the repo refers to. Vite resolves a string `open` with
+     * `new URL(open, localUrl)`, where an absolute value wins — so this opens the
+     * proxied host when there is one and the plain port under `pnpm dev:ports`.
+     *
+     * `BROWSER=none` opts out. Vitest loads this config too and must not launch
+     * anything.
+     */
+    open: process.env.VITEST ? false : (process.env.PORTLESS_URL ?? true),
+  },
   resolve: { tsconfigPaths: true },
   ssr: {
     // @repo/api is TypeScript source, so Vite has to transform it rather than hand
