@@ -46,6 +46,21 @@ const json = (schema: Parameters<typeof resolver>[0], description: string) => ({
 })
 
 /**
+ * `:name` on every script route, declared rather than left to hono-openapi's
+ * inference so that it carries a description. That description is also what an MCP
+ * client sees for the argument, since ./mcp generates the tools from this document.
+ */
+const scriptName: Parameters<typeof describeRoute>[0]["parameters"] = [
+  {
+    in: "path",
+    name: "name",
+    required: true,
+    schema: { type: "string" },
+    description: "Script name, or its `scr_…` id.",
+  },
+]
+
+/**
  * Treat an absent JSON body as `{}` so validation can say what is actually missing.
  *
  * Hono rejects an empty body with "Malformed JSON in request body", which sends you
@@ -77,6 +92,9 @@ export const routes = new Hono()
   .post(
     "/seed",
     describeRoute({
+      // Every `operationId` here is also an MCP tool name, snake_cased — see ./mcp.
+      // Omitting one still yields a tool, just under hono-openapi's generated id.
+      operationId: "seed",
       summary: "Seed the database",
       description:
         "Paginates the full Arcade tool catalog and mirrors it into the local PGlite database. " +
@@ -108,6 +126,7 @@ export const routes = new Hono()
   .get(
     "/toolkits",
     describeRoute({
+      operationId: "listToolkits",
       summary: "List toolkits",
       description:
         "Every distinct toolkit in the database, with its tool count, busiest first.",
@@ -139,10 +158,11 @@ export const routes = new Hono()
   .get(
     "/tools",
     describeRoute({
+      operationId: "listTools",
       summary: "List tools",
       description:
         "Tools in the database, optionally narrowed to one or more toolkits. " +
-        "Pass `?toolkit=` repeatedly or comma-separated; omit it to list everything.",
+        "Pass `toolkit` repeatedly or comma-separated; omit it to list everything.",
       tags: ["tools"],
       responses: {
         200: json(ToolsResponseSchema, "A page of tools."),
@@ -196,13 +216,14 @@ export const routes = new Hono()
   .get(
     "/types",
     describeRoute({
+      operationId: "getTypes",
       summary: "TypeScript declarations for the catalog",
       description:
         "The ambient declarations scripts are written against: one method per tool, with its " +
         "parameters typed from the catalog and its result typed where the catalog declares a shape, " +
         "plus `z` and `defineScript`. Everything is ambient, so a script imports nothing. " +
-        "Filter with `?toolkit=` — the whole catalog is several megabytes. Pass the same toolkits " +
-        "your script declares and this is byte-identical to what `POST /api/validate` compiles " +
+        "Filter with `toolkit` — the whole catalog is several megabytes. Pass the same toolkits " +
+        "your script declares and this is byte-identical to what validation compiles " +
         "against, so what you read is what gets checked; order and repeats make no difference, " +
         "since the emitted file is sorted by namespace either way.",
       tags: ["scripts"],
@@ -240,6 +261,7 @@ export const routes = new Hono()
   .get(
     "/coverage",
     describeRoute({
+      operationId: "getCoverage",
       summary: "Output-schema coverage per toolkit",
       description:
         "Which toolkits declare result shapes and which return `unknown`. Arcade's schema format " +
@@ -261,6 +283,7 @@ export const routes = new Hono()
   .post(
     "/validate",
     describeRoute({
+      operationId: "validateScript",
       summary: "Validate a script without running it",
       description:
         "Checks a script against the catalog: the submitted contract, the capability grant read off " +
@@ -289,7 +312,9 @@ export const routes = new Hono()
   .put(
     "/scripts/:name",
     describeRoute({
+      operationId: "upsertScript",
       summary: "Create or replace a script",
+      parameters: scriptName,
       description:
         "Validates, then stores. An invalid script never lands, so every row in the table type-checks " +
         "against its catalog snapshot — the runner never has to ask whether a script is coherent. " +
@@ -332,6 +357,7 @@ export const routes = new Hono()
   .get(
     "/scripts",
     describeRoute({
+      operationId: "listScripts",
       summary: "List scripts",
       tags: ["scripts"],
       responses: { 200: json(ScriptsResponseSchema, "Every stored script.") },
@@ -354,7 +380,9 @@ export const routes = new Hono()
   .get(
     "/scripts/:name",
     describeRoute({
+      operationId: "getScript",
       summary: "Read a script",
+      parameters: scriptName,
       description:
         "Everything that went in: the `run` method and the `input`/`output` schemas exactly " +
         "as submitted, plus the derived grant. Straight out of the database — nothing is re-derived, " +
@@ -375,7 +403,9 @@ export const routes = new Hono()
   .delete(
     "/scripts/:name",
     describeRoute({
+      operationId: "deleteScript",
       summary: "Delete a script",
+      parameters: scriptName,
       tags: ["scripts"],
       responses: {
         200: json(z.object({ deleted: z.string() }), "Deleted."),
@@ -396,10 +426,13 @@ export const routes = new Hono()
   .post(
     "/scripts/:name/run",
     describeRoute({
+      operationId: "runScript",
       summary: "Run a script",
+      parameters: scriptName,
       description:
         "Executes inside QuickJS-on-WASM with no globals but `log` and the tools in the script's stored " +
-        "grant. Tools run as `userId`, so a run can only reach what that user has already authorized.",
+        "grant. Tools run as `userId`, so a run can only reach what that user has already authorized. " +
+        "A failed run still returns the full report — outcome, logs, tool calls.",
       tags: ["scripts"],
       responses: {
         200: json(RunReportSchema, "The script ran to completion."),
@@ -451,9 +484,10 @@ export const routes = new Hono()
   .post(
     "/revalidate",
     describeRoute({
+      operationId: "revalidate",
       summary: "Re-check every script against the current catalog",
       description:
-        "Pure and cheap, because validation executes nothing. Run this after `POST /api/seed` to find " +
+        "Pure and cheap, because validation executes nothing. Run this after seeding to find " +
         "out which scripts a catalog change broke.",
       tags: ["scripts"],
       responses: {
@@ -516,7 +550,13 @@ export const app = new Hono()
   .route("/api", routes)
   .all(
     "/api/mcp",
-    mcpHandler((path, init) => routes.request(path, init))
+    mcpHandler({
+      // The whole API, as MCP tools, generated from the document rather than
+      // listed here — see ./mcp.
+      document: () => document(),
+      // Documented paths carry the `/api` this app owns; `routes` sits under it.
+      request: (path, init) => routes.request(path.slice("/api".length), init),
+    })
   )
   .get("/api/openapi", async (c) => c.json(await document()))
   .get(
