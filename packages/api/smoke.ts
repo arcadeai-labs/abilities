@@ -147,17 +147,6 @@ line(`GET /api/scripts/${NAME}   — every aspect, straight from the database`)
   console.log(`  run[0]: ${String(s.run).split("\n")[0]}`)
 }
 
-line(
-  `GET /api/scripts/${NAME}/types   — declarations for just this script's grant`
-)
-{
-  const { status, body } = await call("GET", `/api/scripts/${NAME}/types`)
-  const source: string = body
-  console.log(
-    `  ${status}  ${source.split("\n").length} lines, ${(source.length / 1024).toFixed(0)}KiB`
-  )
-}
-
 line(`POST /api/scripts/${NAME}/run   — real tools, as ${USER_ID}`)
 {
   const { status, body } = await call("POST", `/api/scripts/${NAME}/run`, {
