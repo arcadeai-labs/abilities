@@ -9,71 +9,98 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as ChatRouteImport } from './routes/chat'
+import { Route as WorkbenchRouteImport } from './routes/_workbench'
+import { Route as WorkbenchIndexRouteImport } from './routes/_workbench.index'
+import { Route as WorkbenchChatRouteImport } from './routes/_workbench.chat'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
+import { Route as WorkbenchScriptsNameRouteImport } from './routes/_workbench.scripts.$name'
 
-const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+const WorkbenchRoute = WorkbenchRouteImport.update({
+  id: '/_workbench',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChatRoute = ChatRouteImport.update({
+const WorkbenchIndexRoute = WorkbenchIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => WorkbenchRoute,
+} as any)
+const WorkbenchChatRoute = WorkbenchChatRouteImport.update({
   id: '/chat',
   path: '/chat',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => WorkbenchRoute,
 } as any)
 const ApiSplatRoute = ApiSplatRouteImport.update({
   id: '/api/$',
   path: '/api/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkbenchScriptsNameRoute = WorkbenchScriptsNameRouteImport.update({
+  id: '/scripts/$name',
+  path: '/scripts/$name',
+  getParentRoute: () => WorkbenchRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/chat': typeof ChatRoute
+  '/': typeof WorkbenchIndexRoute
+  '/chat': typeof WorkbenchChatRoute
   '/api/$': typeof ApiSplatRoute
+  '/scripts/$name': typeof WorkbenchScriptsNameRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/chat': typeof ChatRoute
+  '/chat': typeof WorkbenchChatRoute
   '/api/$': typeof ApiSplatRoute
+  '/': typeof WorkbenchIndexRoute
+  '/scripts/$name': typeof WorkbenchScriptsNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/chat': typeof ChatRoute
+  '/_workbench': typeof WorkbenchRouteWithChildren
+  '/_workbench/chat': typeof WorkbenchChatRoute
   '/api/$': typeof ApiSplatRoute
+  '/_workbench/': typeof WorkbenchIndexRoute
+  '/_workbench/scripts/$name': typeof WorkbenchScriptsNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/chat' | '/api/$'
+  fullPaths: '/' | '/chat' | '/api/$' | '/scripts/$name'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/chat' | '/api/$'
-  id: '__root__' | '/' | '/chat' | '/api/$'
+  to: '/chat' | '/api/$' | '/' | '/scripts/$name'
+  id:
+    | '__root__'
+    | '/_workbench'
+    | '/_workbench/chat'
+    | '/api/$'
+    | '/_workbench/'
+    | '/_workbench/scripts/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  ChatRoute: typeof ChatRoute
+  WorkbenchRoute: typeof WorkbenchRouteWithChildren
   ApiSplatRoute: typeof ApiSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
+    '/_workbench': {
+      id: '/_workbench'
+      path: ''
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
+      preLoaderRoute: typeof WorkbenchRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/chat': {
-      id: '/chat'
+    '/_workbench/': {
+      id: '/_workbench/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof WorkbenchIndexRouteImport
+      parentRoute: typeof WorkbenchRoute
+    }
+    '/_workbench/chat': {
+      id: '/_workbench/chat'
       path: '/chat'
       fullPath: '/chat'
-      preLoaderRoute: typeof ChatRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof WorkbenchChatRouteImport
+      parentRoute: typeof WorkbenchRoute
     }
     '/api/$': {
       id: '/api/$'
@@ -82,12 +109,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_workbench/scripts/$name': {
+      id: '/_workbench/scripts/$name'
+      path: '/scripts/$name'
+      fullPath: '/scripts/$name'
+      preLoaderRoute: typeof WorkbenchScriptsNameRouteImport
+      parentRoute: typeof WorkbenchRoute
+    }
   }
 }
 
+interface WorkbenchRouteChildren {
+  WorkbenchChatRoute: typeof WorkbenchChatRoute
+  WorkbenchIndexRoute: typeof WorkbenchIndexRoute
+  WorkbenchScriptsNameRoute: typeof WorkbenchScriptsNameRoute
+}
+
+const WorkbenchRouteChildren: WorkbenchRouteChildren = {
+  WorkbenchChatRoute: WorkbenchChatRoute,
+  WorkbenchIndexRoute: WorkbenchIndexRoute,
+  WorkbenchScriptsNameRoute: WorkbenchScriptsNameRoute,
+}
+
+const WorkbenchRouteWithChildren = WorkbenchRoute._addFileChildren(
+  WorkbenchRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  ChatRoute: ChatRoute,
+  WorkbenchRoute: WorkbenchRouteWithChildren,
   ApiSplatRoute: ApiSplatRoute,
 }
 export const routeTree = rootRouteImport
