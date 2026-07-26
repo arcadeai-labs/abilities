@@ -8,6 +8,7 @@ import { coverage, loadCatalog } from "./catalog"
 import { generateTypes } from "./codegen"
 import { db } from "./db"
 import { revalidateAll, runScript, upsertScript } from "./execute"
+import { mcpHandler } from "./mcp"
 import { openApiDocument } from "./openapi"
 import { type ScriptRow, scripts, tools } from "./schema"
 import {
@@ -542,6 +543,10 @@ const present = async (row: ScriptRow) =>
  */
 export const app = new Hono()
   .route("/api", routes)
+  .all(
+    "/api/mcp",
+    mcpHandler((path, init) => routes.request(path, init))
+  )
   .get("/api/openapi", async (c) => c.json(await document()))
   .get(
     "/api/scalar",

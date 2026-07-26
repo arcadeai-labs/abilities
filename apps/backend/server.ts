@@ -32,3 +32,4 @@ const url = process.env.PORTLESS_URL ?? `http://localhost:${port}`
 console.log(`listening on ${url}`)
 console.log(`  scalar   ${url}/api/scalar`)
 console.log(`  openapi  ${url}/api/openapi`)
+console.log(`  mcp      ${url}/api/mcp`)
