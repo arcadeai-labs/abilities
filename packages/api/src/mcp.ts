@@ -18,6 +18,12 @@ import type { Context } from "hono"
  * response). It is generated from the same Zod schemas the routes validate with,
  * so the tool a client sees and the request the route accepts cannot drift apart.
  *
+ * Deriving them is what closes the two failures a hand-written adapter had here:
+ * descriptions were *copies* of the ones in `describeRoute` and drifted from them,
+ * and deleting a route left behind a tool whose only behaviour was to 404. Neither
+ * is reachable now — there is one description and no tool without an operation.
+ * The cost is that route prose is read by agents, so keep it transport-neutral.
+ *
  * This uses the SDK's low-level `Server` rather than `McpServer.registerTool`,
  * which only takes Zod. JSON Schema is MCP's wire format, so handing the
  * document's schemas straight through is both simpler and lossless.

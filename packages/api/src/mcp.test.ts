@@ -98,7 +98,6 @@ describe("the tool table", () => {
     expect(readOnly.sort()).toEqual([
       "get_coverage",
       "get_script",
-      "get_script_types",
       "get_types",
       "list_scripts",
       "list_toolkits",

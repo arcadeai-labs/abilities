@@ -221,9 +221,11 @@ export const routes = new Hono()
       description:
         "The ambient declarations scripts are written against: one method per tool, with its " +
         "parameters typed from the catalog and its result typed where the catalog declares a shape, " +
-        "plus `z` and `defineScript`. Everything is ambient, so a script imports nothing. This is " +
-        "byte-identical to what validation compiles against, so what you read is what gets " +
-        "checked. Filter with `toolkit` — the whole catalog is several megabytes.",
+        "plus `z` and `defineScript`. Everything is ambient, so a script imports nothing. " +
+        "Filter with `toolkit` — the whole catalog is several megabytes. Pass the same toolkits " +
+        "your script declares and this is byte-identical to what validation compiles " +
+        "against, so what you read is what gets checked; order and repeats make no difference, " +
+        "since the emitted file is sorted by namespace either way.",
       tags: ["scripts"],
       responses: {
         200: {
@@ -396,39 +398,6 @@ export const routes = new Hono()
       if (!row)
         return c.json({ error: "not_found", message: "No such script." }, 404)
       return c.json(await present(row), 200)
-    }
-  )
-  .get(
-    "/scripts/:name/types",
-    describeRoute({
-      operationId: "getScriptTypes",
-      summary: "TypeScript declarations for this script's toolkits",
-      parameters: scriptName,
-      description:
-        "The ambient declarations covering exactly the toolkits this script destructured — what " +
-        "`github` is, and what each of its tools takes and returns. Same text validation " +
-        "compiles against.",
-      tags: ["scripts"],
-      responses: {
-        200: {
-          description: "A TypeScript declaration file.",
-          content: { "text/plain": { schema: { type: "string" } } },
-        },
-        404: json(ErrorResponseSchema, "No such script."),
-      },
-    }),
-    async (c) => {
-      const row = await findScript(c.req.param("name"))
-      if (!row)
-        return c.json({ error: "not_found", message: "No such script." }, 404)
-
-      const catalog = await loadCatalog()
-      const scoped = row.toolkits.flatMap(
-        (ns) => catalog.byNamespace.get(ns) ?? []
-      )
-      c.header("Content-Type", "text/plain; charset=utf-8")
-      c.header("X-Catalog-Snapshot", catalog.snapshotId)
-      return c.body(generateTypes(scoped, catalog.nameMap).source, 200)
     }
   )
   .delete(
