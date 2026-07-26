@@ -1,15 +1,24 @@
 /**
  * Decides whether a script is valid, without running any of it.
  *
- * Four passes, in order, because each depends on the last:
+ * Five passes, in order, because each depends on the last:
  *  1. {@link assemble} turns the submitted contract and `run` method into a module.
- *  2. {@link checkAssembly} and {@link checkPolicy} on the bare syntax tree — they
+ *  2. the request body's `toolkits`, resolved against the catalog's namespaces. A
+ *     name that resolves to nothing is a `contract` error with a spelling
+ *     suggestion, since the alternative is a wall of "property does not exist".
+ *  3. {@link checkAssembly} and {@link checkPolicy} on the bare syntax tree — they
  *     confirm the spliced method really is one method, close the module graph, and
- *     read the capability grant off `run`'s destructured context parameter.
- *  3. codegen for exactly the toolkits that grant names, so the compiler sees the
- *     tools the script asked for and nothing else.
- *  4. the type checker, over an in-memory file system holding only `lib.es2022`,
+ *     read the capability grant off the `toolkit.method(…)` calls the script makes.
+ *  4. codegen for exactly the toolkits pass 2 resolved. Scoping it there is what
+ *     makes the declared list mean something: a toolkit the body did not name has
+ *     no declaration, so destructuring it cannot type-check.
+ *  5. the type checker, over an in-memory file system holding only `lib.es2022`,
  *     the generated declarations and the script. No `@types/node`, no DOM.
+ *
+ * Note that pass 4 keys off the *declared* toolkits, not the grant pass 3 found —
+ * an author has to see a tool's signature before they can write the call that
+ * grants it. The two are then reconciled: a declared toolkit no call reaches is a
+ * `contract/unused-toolkit` warning, because it grants nothing.
  *
  * Passing means the script conforms to its declared contract and can only reach
  * the tools in its grant. It does *not* mean the script is safe to run — that is

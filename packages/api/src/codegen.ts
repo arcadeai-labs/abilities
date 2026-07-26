@@ -304,6 +304,12 @@ export function generateTypes(
 
   let typedOutputs = 0
   let emittedNamespaces = 0
+  // Counted as methods are emitted rather than taken from `tools.length`, which
+  // over-reports twice over: a caller may pass the same namespace's tools more
+  // than once (`?toolkit=math,math`), and a tool absent from `nameMap` is skipped
+  // below but would still be counted. Emitting a header that disagrees with the
+  // file under it is how you get someone auditing coverage off a wrong number.
+  let emittedTools = 0
   const namespaces: string[] = []
 
   const emitMethod = (
@@ -341,6 +347,7 @@ export function generateTypes(
 
       const specified = isSpecified(tool.output?.value_schema)
       if (specified) typedOutputs++
+      emittedTools++
 
       methods.push(...emitMethod(binding, tool, specified))
     }
@@ -362,8 +369,8 @@ export function generateTypes(
   // pass reject every import outright rather than allow-listing one.
   const header = [
     "// Generated from the mirrored Arcade catalog. Do not edit.",
-    `// ${tools.length} tool(s) across ${emittedNamespaces} toolkit(s); ` +
-      `${typedOutputs} declare an output shape, ${tools.length - typedOutputs} return \`unknown\`.`,
+    `// ${emittedTools} tool(s) across ${emittedNamespaces} toolkit(s); ` +
+      `${typedOutputs} declare an output shape, ${emittedTools - typedOutputs} return \`unknown\`.`,
     "//",
     "// These declarations are ambient — a script imports nothing.",
     ...nameMap.warnings.map((warning) => `// note: ${warning}`),
@@ -382,7 +389,7 @@ export function generateTypes(
   return {
     source,
     nameMap,
-    stats: { toolkits: emittedNamespaces, tools: tools.length, typedOutputs },
+    stats: { toolkits: emittedNamespaces, tools: emittedTools, typedOutputs },
     warnings: nameMap.warnings,
   }
 }
