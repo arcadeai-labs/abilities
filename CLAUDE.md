@@ -95,8 +95,21 @@ compiles it, so there is no build step.
 - `routes` itself is unprefixed, so the `/api` sits in the client's base URL:
   `createClient("/api").tools.$get()`, not `client.api.tools.$get()`.
 - `openApiDocument` is generated from `app`, not `routes` — that is where the
-  `/api` prefix enters the document. `/api/openapi` and `/api/scalar` carry no
-  `describeRoute`, so they stay out of it.
+  `/api` prefix enters the document. `/api/openapi`, `/api/scalar` and `/api/mcp`
+  carry no `describeRoute`, so they stay out of it.
+- **The MCP server at `/api/mcp` is generated from that document, not written.**
+  `src/mcp.ts` turns each operation into one tool: `operationId` snake-cased is the
+  name, `summary`/`description` the prose, path parameters, query parameters and
+  the JSON body flatten into a single argument object, and the lowest 2xx JSON
+  response is the output schema. So **adding a route adds a tool** with no edit to
+  `src/mcp.ts` — give the route an `operationId` or the tool lands under
+  hono-openapi's generated one (`get_api_scripts_by_name_types`). Corollaries: a
+  path parameter needs an explicit `parameters` entry to carry a description, since
+  that description is all an MCP argument gets; route prose is read by agents, so
+  keep it transport-neutral. It drives the SDK's low-level `Server` rather than
+  `McpServer.registerTool`, which only accepts Zod — JSON Schema is MCP's wire
+  format, so the document's schemas pass straight through. Tools call the routes
+  in-process, and a fresh server and transport per request keep it stateless.
 - Zod schemas live in `src/schemas.ts` and carry `.meta({ id })`; `src/openapi.ts`
   hoists those `$defs` into `components.schemas`.
 - `src/paths.ts` resolves the data dir and migrations from the **workspace root**,
