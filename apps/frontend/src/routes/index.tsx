@@ -1,5 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { Button } from "@/components/ui/button"
+import { createFileRoute, Link } from "@tanstack/react-router"
+import { buttonVariants } from "@/components/ui/button"
 
 export const Route = createFileRoute("/")({ component: App })
 
@@ -10,8 +10,9 @@ function App() {
         <div>
           <h1 className="font-medium">Project ready!</h1>
           <p>You may now add components and start building.</p>
-          <p>We&apos;ve already added the button component for you.</p>
-          <Button className="mt-2">Button</Button>
+          <Link className={buttonVariants({ className: "mt-2" })} to="/chat">
+            Chat with the agent
+          </Link>
         </div>
       </div>
     </div>

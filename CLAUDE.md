@@ -95,8 +95,8 @@ compiles it, so there is no build step.
 - `routes` itself is unprefixed, so the `/api` sits in the client's base URL:
   `createClient("/api").tools.$get()`, not `client.api.tools.$get()`.
 - `openApiDocument` is generated from `app`, not `routes` — that is where the
-  `/api` prefix enters the document. `/api/openapi`, `/api/scalar` and `/api/mcp`
-  carry no `describeRoute`, so they stay out of it.
+  `/api` prefix enters the document. `/api/openapi`, `/api/scalar`, `/api/mcp` and
+  `/api/chat` carry no `describeRoute`, so they stay out of it.
 - **The MCP server at `/api/mcp` is generated from that document, not written.**
   `src/mcp.ts` turns each operation into one tool: `operationId` snake-cased is the
   name, `summary`/`description` the prose, path parameters, query parameters and

@@ -25,6 +25,7 @@
     "vitest": "^4.1.10"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.20",
     "@arcadeai/arcadejs": "^2.4.1",
     "@electric-sql/pglite": "^0.5.4",
     "@hono/mcp": "^0.3.1",
@@ -32,6 +33,7 @@
     "@jitl/quickjs-singlefile-cjs-release-sync": "0.32.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@scalar/hono-api-reference": "^0.11.11",
+    "ai": "^7.0.37",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.32",
     "hono-openapi": "^1.3.1",
