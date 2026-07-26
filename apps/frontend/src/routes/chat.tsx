@@ -1,0 +1,98 @@
+/**
+ * `useChat` posts to `/api/chat` by default, which is the route next door, so
+ * there is no transport to configure.
+ *
+ * AI Elements renders the stream: `Conversation` pins the scroll to the bottom
+ * while tokens arrive and `MessageResponse` is a streaming-aware markdown
+ * renderer, so partial output never flashes as broken syntax. Its `prompt-input`
+ * component is deliberately not used — it is written against Radix-flavoured
+ * shadcn (`DropdownMenuItem.onSelect(e: Event)`, `HoverCard.openDelay`) and this
+ * app's `components/ui` are Base UI (`style: "base-rhea"` in components.json).
+ * A textarea and a button are the whole input anyway.
+ */
+import { useChat } from "@ai-sdk/react"
+import { createFileRoute } from "@tanstack/react-router"
+import { useState } from "react"
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation"
+import {
+  Message,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message"
+import { Button } from "@/components/ui/button"
+import { Textarea } from "@/components/ui/textarea"
+
+export const Route = createFileRoute("/chat")({ component: Chat })
+
+function Chat() {
+  const { messages, sendMessage, status } = useChat()
+  const [input, setInput] = useState("")
+  const busy = status === "submitted" || status === "streaming"
+
+  const submit = () => {
+    if (!input.trim() || busy) return
+    sendMessage({ text: input })
+    setInput("")
+  }
+
+  return (
+    <div className="mx-auto flex h-svh max-w-2xl flex-col gap-4 p-6">
+      <Conversation>
+        <ConversationContent>
+          {messages.length === 0 ? (
+            <ConversationEmptyState
+              description="Streamed from /api/chat with Claude Sonnet 5."
+              title="Ask the agent"
+            />
+          ) : (
+            messages.map((message) => (
+              <Message from={message.role} key={message.id}>
+                <MessageContent>
+                  {message.parts.map((part, index) =>
+                    part.type === "text" ? (
+                      // Parts are positional within a message and carry no id.
+                      // biome-ignore lint/suspicious/noArrayIndexKey: no stable id
+                      <MessageResponse key={index}>{part.text}</MessageResponse>
+                    ) : null
+                  )}
+                </MessageContent>
+              </Message>
+            ))
+          )}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
+
+      <form
+        className="flex items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          submit()
+        }}
+      >
+        <Textarea
+          className="max-h-40 min-h-10 resize-none"
+          onChange={(event) => setInput(event.target.value)}
+          onKeyDown={(event) => {
+            // Enter sends, shift+Enter breaks the line.
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault()
+              submit()
+            }
+          }}
+          placeholder="What would you like to know?"
+          rows={1}
+          value={input}
+        />
+        <Button disabled={busy || !input.trim()} type="submit">
+          Send
+        </Button>
+      </form>
+    </div>
+  )
+}

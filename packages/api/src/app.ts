@@ -4,6 +4,7 @@ import { Hono } from "hono"
 import { createMiddleware } from "hono/factory"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { z } from "zod"
+import { agentHandler } from "./agent"
 import { coverage, loadCatalog } from "./catalog"
 import { generateTypes } from "./codegen"
 import { db } from "./db"
@@ -548,6 +549,8 @@ const present = async (row: ScriptRow) =>
  */
 export const app = new Hono()
   .route("/api", routes)
+  // A UI message stream, not a catalog operation — see ./agent.
+  .post("/api/chat", agentHandler)
   .all(
     "/api/mcp",
     mcpHandler({
