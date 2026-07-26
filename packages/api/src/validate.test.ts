@@ -80,25 +80,35 @@ describe("accepts", () => {
     ]);
   });
 
-  it("lets `expect` give an unspecified output a shape", async () => {
+  it("lets the author narrow an undeclared output in the code", async () => {
+    // Slack declares no output shapes, so `sent` arrives as `unknown`. Asserting a
+    // shape over it is the script's own business, made where the value is used.
     const result = await validateScript({
       input: { type: "object", properties: { channel: { type: "string" } }, required: ["channel"] },
       output: { type: "object", properties: { sentTo: { type: "string" } }, required: ["sentTo"] },
-      expect: {
-        "slack.sendMessage": {
-          type: "object",
-          properties: { channel: { type: "string" } },
-          required: ["channel"],
-        },
-      },
       run: `async run(input, { slack }) {
-  const sent = await slack.sendMessage({ channel_name: input.channel, message: "hi" });
+  const raw = await slack.sendMessage({ channel_name: input.channel, message: "hi" });
+  const sent = z.object({ channel: z.string() }).parse(raw);
   return { sentTo: sent.channel };
 }`,
     });
 
     expect(result.diagnostics).toEqual([]);
     expect(result.ok).toBe(true);
+  });
+
+  it("still refuses to touch an undeclared output that was not narrowed", async () => {
+    const result = await validateScript({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { sentTo: { type: "string" } }, required: ["sentTo"] },
+      run: `async run(input, { slack }) {
+  const sent = await slack.sendMessage({ channel_name: "#c", message: "hi" });
+  return { sentTo: sent.channel };
+}`,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.diagnostics)).toContain("TS18046");
   });
 
   it("turns the submitted JSON Schema into the contract the runtime enforces", async () => {
@@ -331,16 +341,5 @@ describe("warns", () => {
 
     expect(result.ok).toBe(true);
     expect(codes(result.diagnostics)).toContain("policy/unused-toolkit");
-  });
-
-  it("about an `expect` for a tool the script never calls", async () => {
-    const result = await validateScript(
-      script(`  log("hi");`, {
-        expect: { "slack.sendMessage": { type: "object", properties: {} } },
-      }),
-    );
-
-    expect(result.ok).toBe(true);
-    expect(codes(result.diagnostics)).toContain("contract/unused-expect");
   });
 });

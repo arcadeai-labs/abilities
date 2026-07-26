@@ -61,8 +61,6 @@ export const scripts = pgTable("scripts", {
   inputSchema: jsonb("input_schema").$type<unknown>().notNull(),
   /** JSON Schema the return value must satisfy, exactly as submitted. */
   outputSchema: jsonb("output_schema").$type<unknown>().notNull(),
-  /** Declared shapes for tools the catalog leaves unspecified, keyed by tool path. */
-  expectSchemas: jsonb("expect_schemas").$type<Record<string, unknown>>().notNull().default({}),
   /**
    * Type-erased source, ready for the sandbox.
    *

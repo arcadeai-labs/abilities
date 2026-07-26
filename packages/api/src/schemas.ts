@@ -138,7 +138,9 @@ export const ValidationSchema = z
       z.object({
         path: z.string(),
         qualifiedName: z.string(),
-        typed: z.boolean().describe("False means the result is `unknown` and needs `expect`."),
+        typed: z
+          .boolean()
+          .describe("False means the result arrives as `unknown`; narrow it with `z.….parse()`."),
       }),
     ),
   })
@@ -152,13 +154,6 @@ export const ScriptParamsSchema = z
   .object({
     input: JsonSchemaSchema.describe("Shape of the value `run` receives."),
     output: JsonSchemaSchema.describe("Shape the return value must satisfy."),
-    expect: z
-      .record(z.string(), JsonSchemaSchema)
-      .optional()
-      .describe(
-        "Shapes for tools whose catalog output is unspecified, keyed by tool path (`slack.sendMessage`). " +
-          "Unlike a catalog shape this is an assertion, so a mismatch fails the run.",
-      ),
     run: z
       .string()
       .describe(
@@ -180,12 +175,11 @@ export const ScriptSchema = z
     run: z.string().describe("The method source, as submitted."),
     input: z.unknown().describe("JSON Schema, as submitted."),
     output: z.unknown().describe("JSON Schema, as submitted."),
-    expect: z.record(z.string(), z.unknown()).describe("JSON Schemas by tool path, as submitted."),
     version: z.int(),
-    grant: z.array(z.string()).describe("Upstream tools this script may call."),
-    paths: z.record(z.string(), z.string()).describe("`github.getIssue` to `Github.GetIssue`."),
-    namespaces: z.array(z.string()),
-    source: z.string().describe("The module assembled from the fields above; what type-checked."),
+    grant: z
+      .record(z.string(), z.string())
+      .describe("`github.getIssue` to `Github.GetIssue` — every tool this script may call."),
+    namespaces: z.array(z.string()).describe("Toolkits the grant touches; derived from its keys."),
     snapshotId: z.string(),
     stale: z.boolean().describe("True when the catalog moved on since this was validated."),
     createdAt: z.string(),

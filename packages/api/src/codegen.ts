@@ -158,6 +158,17 @@ export type GeneratedTypes = {
 const PRELUDE = String.raw`  /** Built by ${"`z`"}; read back out with ${"`Infer`"}. */
 interface Schema<T> {
   readonly __out: T;
+  /**
+   * Checks a value and returns it typed, or throws.
+   *
+   * This is how you use a tool whose output the catalog does not describe: the
+   * result arrives as ${"`unknown`"}, and asserting a shape over it is your call to
+   * make, not something the platform decides for you. The check runs inside the
+   * sandbox, because it only protects the script from its own assumption —
+   * ${"`input`"} and ${"`output`"} are the contract with the caller and stay enforced
+   * host-side no matter what the script does.
+   */
+  parse(value: unknown): T;
 }
 
 interface Chainable<T> extends Schema<T> {
@@ -218,47 +229,27 @@ declare const z: {
 };
 
 /** Every tool this snapshot exposes. */
-type ToolPath = keyof ToolOutputs;
-
-/** Shapes declared through ${"`expect`"} win over whatever the catalog says. */
-type Expected = Partial<Record<ToolPath, Schema<unknown>>>;
-type Resolve<P extends ToolPath, E extends Expected> = P extends keyof E
-  ? Infer<E[P]>
-  : ToolOutputs[P];
-
 /**
  * Second argument to ${"`run`"}. Destructuring it is what grants capability: the
  * toolkits you name are the only ones the sandbox will call, so
  * ${"`async run(input, { github, log })`"} can reach GitHub and nothing else.
  */
-type Ctx<E extends Expected = {}> = Toolkits<E> & {
+type Ctx = Toolkits & {
   /** Appended to the run's ${"`logs`"}. */
   log(...values: unknown[]): void;
 };
 
-type ScriptConfig<
-  I extends Schema<unknown>,
-  O extends Schema<unknown>,
-  E extends Expected,
-> = {
+type ScriptConfig<I extends Schema<unknown>, O extends Schema<unknown>> = {
   /** Validated against the caller's ${"`input`"} before ${"`run`"} is entered. */
   input: I;
   /** Validated against the return value before the response is sent. */
   output: O;
-  /**
-   * Shapes for tools whose output the catalog leaves unspecified. Unlike a
-   * catalog shape, an ${"`expect`"} is an assertion by the author, so a mismatch at
-   * runtime fails the run.
-   */
-  expect?: E;
-  run(input: Infer<I>, ctx: Ctx<E>): Promise<Infer<O>>;
+  run(input: Infer<I>, ctx: Ctx): Promise<Infer<O>>;
 };
 
-declare function defineScript<
-  I extends Schema<unknown>,
-  O extends Schema<unknown>,
-  const E extends Expected = {},
->(config: ScriptConfig<I, O, E>): ScriptConfig<I, O, E>;
+declare function defineScript<I extends Schema<unknown>, O extends Schema<unknown>>(
+  config: ScriptConfig<I, O>,
+): ScriptConfig<I, O>;
 `;
 
 /**
@@ -278,15 +269,19 @@ export function generateTypes(
 
   let typedOutputs = 0;
   let emittedNamespaces = 0;
-  const outputs: string[] = [];
   const namespaces: string[] = [];
 
-  const emitMethod = (binding: ToolBinding, tool: CodegenTool): string[] => {
-    const lines = docComment(tool.description ?? undefined, INDENT.repeat(3));
-    const inputType = emitInput(tool.input, INDENT.repeat(3));
-    lines.push(
-      `${INDENT.repeat(3)}${binding.method}(input: ${inputType}): Promise<Resolve<"${binding.path}", E>>;`,
-    );
+  const emitMethod = (binding: ToolBinding, tool: CodegenTool, specified: boolean): string[] => {
+    const indent = INDENT.repeat(3);
+    const lines = docComment(tool.description ?? undefined, indent);
+    if (!specified) {
+      // `unknown` is the honest default. Narrowing it is the author's call, made
+      // where the value is used: `z.object({ … }).parse(result)`.
+      lines.push(`${indent}// Output undeclared upstream — narrow the result with \`z.…parse()\`.`);
+    }
+    const inputType = emitInput(tool.input, indent);
+    const outputType = emitType(tool.output?.value_schema, indent, 0);
+    lines.push(`${indent}${binding.method}(input: ${inputType}): Promise<${outputType}>;`);
     return lines;
   };
 
@@ -300,21 +295,7 @@ export function generateTypes(
       const specified = isSpecified(tool.output?.value_schema);
       if (specified) typedOutputs++;
 
-      outputs.push(...docComment(tool.output?.description ?? undefined, INDENT.repeat(2)));
-      if (!specified) {
-        outputs.push(
-          `${INDENT.repeat(2)}// Output shape unspecified upstream — declare one with \`expect\`.`,
-        );
-      }
-      outputs.push(
-        `${INDENT.repeat(2)}${JSON.stringify(binding.path)}: ${emitType(
-          tool.output?.value_schema,
-          INDENT.repeat(2),
-          0,
-        )};`,
-      );
-
-      methods.push(...emitMethod(binding, tool));
+      methods.push(...emitMethod(binding, tool, specified));
     }
 
     // A filtered request only asks for some toolkits; the rest contribute nothing.
@@ -345,12 +326,7 @@ export function generateTypes(
   const source = [
     ...header,
     PRELUDE,
-    "/** Declared output shape per tool, or `unknown` where the catalog is silent. */",
-    "interface ToolOutputs {",
-    ...outputs.map(dedent),
-    "}",
-    "",
-    "type Toolkits<E extends Expected = {}> = {",
+    "type Toolkits = {",
     ...namespaces.map(dedent),
     "};",
     "",

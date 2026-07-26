@@ -289,19 +289,6 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
     });
   }
 
-  // An `expect` for a tool the script never calls is a stale declaration; say so
-  // rather than silently ignoring it.
-  for (const path of Object.keys(contract.expect)) {
-    if (grant[path]) continue;
-    diagnostics.push({
-      category: "contract",
-      code: "contract/unused-expect",
-      severity: "warning",
-      message: `\`expect["${path}"]\` declares a shape for a tool this script never calls.`,
-      start: point(1, 1),
-      end: point(1, 1),
-    });
-  }
 
   const ok = diagnostics.every((diagnostic) => diagnostic.severity !== "error");
 

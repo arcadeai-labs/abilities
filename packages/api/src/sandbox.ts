@@ -90,12 +90,14 @@ const getModule = () => (modulePromise ??= newQuickJSWASMModuleFromVariant(RELEA
 const jsString = (value: string) => JSON.stringify(value);
 
 /**
- * Builds the guest's globals: an inert `z`, `defineScript`, and a context object
- * whose only tool methods are the granted ones.
+ * Builds the guest's globals: `z`, `defineScript`, and a context object whose only
+ * tool methods are the granted ones.
  *
- * `z` can be a stub because the contract was already read out of the syntax tree at
- * validation time (see ./schema-dsl) and every check runs host-side. The guest
- * never needs a working schema library, so it doesn't get one.
+ * `z` is real here rather than a stub, because `parse()` is how a script narrows a
+ * tool result the catalog does not describe — and that assertion is the script's
+ * own, protecting it from its own assumption. The contract with the caller
+ * (`input`/`output`) is checked host-side regardless, so nothing depends on the
+ * guest running these.
  */
 function prelude(grant: Record<string, string>): string {
   const namespaces = new Map<string, string[]>();
@@ -121,16 +123,88 @@ function prelude(grant: Record<string, string>): string {
     .join("\n");
 
   return `var ${CONFIG_GLOBAL};
-function __chain() {
-  var s = {};
-  function f() { return s; }
-  s.optional = f; s.nullable = f; s.describe = f; s.int = f; s.min = f; s.max = f;
-  s.email = f; s.url = f; s.regex = f;
-  return s;
+function __with(spec, key, value) {
+  var next = {};
+  for (var k in spec) next[k] = spec[k];
+  next[key] = value;
+  return __mk(next);
+}
+function __mk(spec) {
+  var api = {
+    __spec: spec,
+    parse: function (value) {
+      var errors = [];
+      __check(spec, value, "", errors);
+      if (errors.length) throw new TypeError("schema: " + errors.slice(0, 3).join("; "));
+      return value;
+    },
+    optional: function () { return __mk({ kind: "optional", inner: spec }); },
+    nullable: function () { return __mk({ kind: "nullable", inner: spec }); },
+    describe: function () { return api; },
+    int: function () { return __with(spec, "int", true); },
+    min: function (n) { return __with(spec, "min", n); },
+    max: function (n) { return __with(spec, "max", n); },
+    email: function () { return __with(spec, "format", "email"); },
+    url: function () { return __with(spec, "format", "url"); },
+    regex: function (re) { return __with(spec, "pattern", re.source); }
+  };
+  return api;
+}
+function __check(spec, value, path, errors) {
+  var at = path || "(root)";
+  function fail(m) { errors.push(at + " " + m); }
+  var i, k;
+  switch (spec.kind) {
+    case "unknown": return;
+    case "optional": if (value !== undefined) __check(spec.inner, value, path, errors); return;
+    case "nullable": if (value !== null) __check(spec.inner, value, path, errors); return;
+    case "string":
+      if (typeof value !== "string") { fail("expected string"); return; }
+      if (spec.min !== undefined && value.length < spec.min) fail("shorter than " + spec.min);
+      if (spec.max !== undefined && value.length > spec.max) fail("longer than " + spec.max);
+      if (spec.pattern !== undefined && !new RegExp(spec.pattern).test(value)) fail("does not match");
+      if (spec.format === "email" && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value)) fail("not an email");
+      return;
+    case "number":
+      if (typeof value !== "number" || !isFinite(value)) { fail("expected number"); return; }
+      if (spec.int && Math.floor(value) !== value) fail("expected an integer");
+      if (spec.min !== undefined && value < spec.min) fail("below " + spec.min);
+      if (spec.max !== undefined && value > spec.max) fail("above " + spec.max);
+      return;
+    case "boolean": if (typeof value !== "boolean") fail("expected boolean"); return;
+    case "literal": if (value !== spec.value) fail("expected " + JSON.stringify(spec.value)); return;
+    case "enum": if (spec.values.indexOf(value) < 0) fail("expected one of " + spec.values.join(", ")); return;
+    case "array":
+      if (!Array.isArray(value)) { fail("expected array"); return; }
+      if (spec.min !== undefined && value.length < spec.min) fail("fewer than " + spec.min + " items");
+      if (spec.max !== undefined && value.length > spec.max) fail("more than " + spec.max + " items");
+      for (i = 0; i < value.length; i++) __check(spec.element, value[i], path + "[" + i + "]", errors);
+      return;
+    case "record":
+      if (typeof value !== "object" || value === null || Array.isArray(value)) { fail("expected object"); return; }
+      for (k in value) __check(spec.value, value[k], path ? path + "." + k : k, errors);
+      return;
+    case "object":
+      if (typeof value !== "object" || value === null || Array.isArray(value)) { fail("expected object"); return; }
+      for (k in spec.fields) __check(spec.fields[k], value[k], path ? path + "." + k : k, errors);
+      return;
+  }
 }
 var z = {
-  string: __chain, number: __chain, int: __chain, boolean: __chain, unknown: __chain,
-  object: __chain, array: __chain, enum: __chain, record: __chain, literal: __chain
+  string: function () { return __mk({ kind: "string" }); },
+  number: function () { return __mk({ kind: "number" }); },
+  int: function () { return __mk({ kind: "number", int: true }); },
+  boolean: function () { return __mk({ kind: "boolean" }); },
+  unknown: function () { return __mk({ kind: "unknown" }); },
+  literal: function (v) { return __mk({ kind: "literal", value: v }); },
+  enum: function (values) { return __mk({ kind: "enum", values: values }); },
+  array: function (el) { return __mk({ kind: "array", element: el.__spec }); },
+  record: function (v) { return __mk({ kind: "record", value: v.__spec }); },
+  object: function (shape) {
+    var fields = {};
+    for (var k in shape) fields[k] = shape[k].__spec;
+    return __mk({ kind: "object", fields: fields });
+  }
 };
 function defineScript(config) { return config; }
 var __ctx = {

@@ -106,7 +106,6 @@ line(`GET /api/scripts/${NAME}   — every aspect, straight from the database`);
   console.log(`  ${status}  keys: ${Object.keys(s).join(", ")}`);
   console.log(`  input:  ${JSON.stringify(s.input)}`);
   console.log(`  output: ${JSON.stringify(s.output)}`);
-  console.log(`  expect: ${JSON.stringify(s.expect)}`);
   console.log(`  grant:  ${JSON.stringify(s.grant)}`);
   console.log(`  run[0]: ${String(s.run).split("\n")[0]}`);
 }

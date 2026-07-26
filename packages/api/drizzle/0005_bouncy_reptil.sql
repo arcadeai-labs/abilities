@@ -1,0 +1,1 @@
+ALTER TABLE "scripts" DROP COLUMN "expect_schemas";

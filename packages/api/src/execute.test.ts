@@ -162,6 +162,43 @@ describe("running", () => {
     expect(report.toolCalls).toMatchObject([{ qualifiedName: "Math.SumList", ok: true }]);
   });
 
+  it("narrows a result with `z.parse()` inside the sandbox", async () => {
+    // `parse` runs in the guest, not host-side: it is the script asserting a shape
+    // over a value it is about to use, which is its own business.
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      run: `async run(input, { math }) {
+  const sum = z.string().parse(await math.add({ a: "2", b: "3" }));
+  return { sum };
+}`,
+    });
+
+    const report = await runScript({ script, input: {}, userId: TEST_USER });
+
+    expect(report.outcome).toEqual({ kind: "ok", output: { sum: "5" } });
+  });
+
+  it("fails the run when a `z.parse()` assertion is wrong", async () => {
+    // Type-checks — `parse` returns a number — but `Math.Add` really returns "5",
+    // so the assertion is false and the guest throws.
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { sum: { type: "number" } }, required: ["sum"] },
+      run: `async run(input, { math }) {
+  const sum = z.number().parse(await math.add({ a: "2", b: "3" }));
+  return { sum };
+}`,
+    });
+
+    const report = await runScript({ script, input: {}, userId: TEST_USER });
+
+    expect(report.outcome).toMatchObject({ kind: "script_error", name: "TypeError" });
+    expect((report.outcome as { message: string }).message).toContain("expected number");
+    // The tool did run — the assertion failed after it returned.
+    expect(report.toolCalls).toMatchObject([{ qualifiedName: "Math.Add", ok: true }]);
+  });
+
   it("reports an upstream tool failure as a tool error, not a script error", async () => {
     const script = await store({
       input: { type: "object", properties: {} },

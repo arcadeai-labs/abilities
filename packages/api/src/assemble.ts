@@ -23,13 +23,11 @@ export type ScriptParams = {
   input: JsonSchema;
   /** JSON Schema the return value must satisfy. */
   output: JsonSchema;
-  /** Declared shapes for tools whose catalog output is unspecified, keyed by `github.getIssue`. */
-  expect?: Record<string, JsonSchema>;
   /** `async run(input, { github, log }) { … }` */
   run: string;
 };
 
-export type Contract = { input: Spec; output: Spec; expect: Record<string, Spec> };
+export type Contract = { input: Spec; output: Spec };
 
 export type Assembled = {
   source: string;
@@ -68,13 +66,6 @@ export function assemble(params: ScriptParams): AssembleResult {
     "defineScript({",
     `input: ${specToSource(contract.input)},`,
     `output: ${specToSource(contract.output)},`,
-    ...(Object.keys(contract.expect).length > 0
-      ? [
-          `expect: { ${Object.entries(contract.expect)
-            .map(([path, spec]) => `${JSON.stringify(path)}: ${specToSource(spec)}`)
-            .join(", ")} },`,
-        ]
-      : []),
   ];
 
   const source = [...preamble, params.run.replace(/\s+$/, ""), "});", ""].join("\n");
@@ -110,13 +101,7 @@ export function contractFrom(params: ScriptParams): {
   const input = read(params.input, "input");
   const output = read(params.output, "output");
 
-  const expect: Record<string, Spec> = {};
-  for (const [path, schema] of Object.entries(params.expect ?? {})) {
-    const spec = read(schema, `expect["${path}"]`);
-    if (spec) expect[path] = spec;
-  }
-
-  return { contract: input && output ? { input, output, expect } : null, diagnostics };
+  return { contract: input && output ? { input, output } : null, diagnostics };
 }
 
 /**
@@ -165,7 +150,7 @@ export function toAuthorCoordinates(diagnostic: Diagnostic, runLineOffset: numbe
     return {
       ...diagnostic,
       category: "contract",
-      message: `${diagnostic.message} (in the declared \`input\`/\`output\`/\`expect\`)`,
+      message: `${diagnostic.message} (in the declared \`input\` or \`output\`)`,
       ...at(),
     };
   }

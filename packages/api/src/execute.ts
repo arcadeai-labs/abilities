@@ -14,7 +14,7 @@ import { checkAuthorization, executeTool, ToolExecutionError } from "./arcade";
 import { loadCatalog } from "./catalog";
 import { compileScript } from "./compile";
 import { db } from "./db";
-import { type Spec, validateSpec, type Violation } from "./schema-dsl";
+import { validateSpec, type Violation } from "./schema-dsl";
 import { runs, type ScriptRow, scripts } from "./schema";
 import { contractFrom, type ScriptParams } from "./assemble";
 import { validateScript, type ValidationResult } from "./validate";
@@ -25,7 +25,6 @@ const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice
 export const paramsOf = (row: ScriptRow): ScriptParams => ({
   input: row.inputSchema as ScriptParams["input"],
   output: row.outputSchema as ScriptParams["output"],
-  expect: row.expectSchemas as ScriptParams["expect"],
   run: row.run,
 });
 
@@ -57,7 +56,6 @@ export async function upsertScript(input: {
     run: input.params.run,
     inputSchema: input.params.input,
     outputSchema: input.params.output,
-    expectSchemas: (input.params.expect ?? {}) as Record<string, unknown>,
     compiled: compileScript(validation.source),
     toolGrant: validation.grant,
     snapshotId: validation.snapshotId,
@@ -188,7 +186,6 @@ export async function runScript(options: {
     input: options.input,
     callTool: async (qualifiedName, path, args) => {
       const runtime = catalog.runtime.get(qualifiedName);
-      const expected = contract.expect[path] as Spec | undefined;
 
       // The type checker already covered this; doing it again costs nothing and
       // holds even if the stored compiled source and grant ever disagree.
@@ -203,16 +200,9 @@ export async function runScript(options: {
 
       const result = await executeTool(qualifiedName, args as Record<string, unknown>, options.userId);
 
-      // An `expect` is the author's assertion, so breaking it fails the run. The
-      // catalog's own shape is only a description, so breaking it is drift.
-      if (expected) {
-        const violations = validateSpec(expected, result);
-        if (violations.length > 0) {
-          throw new ToolExecutionError(
-            `\`${path}\` did not match its \`expect\` shape: ${describe(violations)}`,
-          );
-        }
-      } else if (runtime?.output) {
+      // A catalog-declared shape is descriptive, not contractual: a vendor adding a
+      // field must not fail a run, so a mismatch is recorded rather than thrown.
+      if (runtime?.output) {
         const violations = validateSpec(runtime.output, result);
         if (violations.length > 0) drift.push({ tool: qualifiedName, violations });
       }

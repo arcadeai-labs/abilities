@@ -270,7 +270,7 @@ export const routes = new Hono()
     describeRoute({
       summary: "Read a script",
       description:
-        "Everything that went in: the `run` method and the `input`/`output`/`expect` schemas exactly " +
+        "Everything that went in: the `run` method and the `input`/`output` schemas exactly " +
         "as submitted, plus the derived grant. Straight out of the database — nothing is re-derived, " +
         "and nothing is stored that the request body did not carry.",
       tags: ["scripts"],
@@ -401,7 +401,6 @@ function describeScript(row: ScriptRow, snapshotId: string) {
     run: row.run,
     input: row.inputSchema,
     output: row.outputSchema,
-    expect: row.expectSchemas,
     version: row.version,
     grant: row.toolGrant,
     namespaces: namespacesOf(row),

@@ -49,8 +49,8 @@ Use `portless get <name>` for cross-service URLs rather than hardcoding one.
 
 `pnpm --filter @repo/backend serve:portless` runs the API alone on
 `returntypes-api`, for poking at it without the frontend in the way. It is
-deliberately not called `dev`, so `turbo run dev` can't start it: PGlite's
-exclusive lock means it and `pnpm dev` cannot both hold the database.
+deliberately not called `dev`, so `turbo run dev` can't start it: it and `pnpm dev`
+cannot both hold the database.
 
 ## Tooling
 
@@ -90,10 +90,17 @@ compiles it, so there is no build step.
   the same database, and `import.meta.url` moves when the frontend bundles this
   source, so don't reintroduce cwd- or module-relative paths.
 - `@electric-sql/pglite` + `drizzle-orm/pglite` for Postgres, data dir `./pgdata`
-  at the workspace root. PGlite holds an exclusive lock, so only one process may
-  open it: stop the dev server before `pnpm sync` or `db:studio`. It also needs a
-  clean close or the data dir will not reopen. Three things keep that true, all
-  load-bearing:
+  at the workspace root. **PGlite does not actually enforce an exclusive lock**
+  across processes, whatever the docs say: two openers each get their own page
+  cache and their flushes interleave, which corrupts the database *silently* rather
+  than erroring. Running `db:migrate` under a live dev server left `pg_attribute`
+  missing four columns and the migration journal disagreeing with the schema, and
+  nothing surfaced until an unrelated query failed later. So `src/db.ts` claims an
+  `owner.json` naming its pid and refuses to open a dir another live process holds
+  — stop the dev server before `pnpm sync`, `db:migrate` or `db:studio`.
+
+  It also needs a clean close or the data dir will not reopen. Three things keep
+  that true, all load-bearing:
   - `src/db.ts` parks the handle on `globalThis`, because Vite re-evaluates the
     module on every edit and a second `PGlite.create` would race the lock;
   - `src/db.ts` closes on `SIGINT`/`SIGTERM` (`tsx watch` signals on every
@@ -102,6 +109,8 @@ compiles it, so there is no build step.
     the last hook before Vite's own `process.exit`.
 
   A dir killed with `SIGKILL` is unrecoverable: delete it and re-run `pnpm sync`.
+  Stop hosts with `SIGTERM` and wait — the owner file is released on the way out,
+  and a stale one left by a crash is reclaimed automatically.
 - `node:fs`/`node:path` are fine here.
 - `pnpm --filter @repo/api test` runs vitest. **The suite has no mocks** — it calls
   the real Arcade API through the real executor, so it needs `ARCADE_API_KEY` and a
@@ -213,8 +222,13 @@ and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
   never enters a script, so even a total escape is bounded by what that user could
   already do through Arcade directly.
 - A catalog-declared output shape is **descriptive**: a mismatch is recorded as
-  `drift`, not a failure, because a vendor adding a field must not break scripts. An
-  `expect` shape is the author's **assertion**, so a mismatch fails the run.
+  `drift`, not a failure, because a vendor adding a field must not break scripts.
+- Where the catalog says nothing the result is `unknown`, and narrowing it is the
+  author's job, done in the code: `z.object({ … }).parse(result)`. That check runs
+  **in the guest**, because it only protects the script from its own assumption —
+  which is why the sandbox's `z` is a real validator rather than a stub. `input` and
+  `output` are the contract with the caller and stay enforced host-side regardless
+  of what the script does.
 - There is no dry-run mode and no schema-derived fake data. Generating a plausible
   value from a declared shape only proves the shape was declared, and it diverges
   from what the tool really returns exactly where it would matter. Exercise a script
