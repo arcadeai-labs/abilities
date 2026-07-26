@@ -10,40 +10,54 @@
  * splicing untrusted text is how a template injection gets in.
  */
 
-import ts from "typescript";
+import ts from "typescript"
 
 /** Global the prelude reads the script's config from. */
-export const CONFIG_GLOBAL = "__config";
+export const CONFIG_GLOBAL = "__config"
 
 export function compileScript(source: string): string {
-  const file = ts.createSourceFile("/script.ts", source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
+  const file = ts.createSourceFile(
+    "/script.ts",
+    source,
+    ts.ScriptTarget.ES2022,
+    true,
+    ts.ScriptKind.TS
+  )
 
-  const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => (root) => {
-    const { factory } = context;
-    const statements = root.statements.map((statement) => {
-      // Validation guarantees the module is exactly one `defineScript({ … })`
-      // expression statement; binding its result is all the guest needs.
-      if (
-        ts.isExpressionStatement(statement) &&
-        ts.isCallExpression(statement.expression) &&
-        ts.isIdentifier(statement.expression.expression) &&
-        statement.expression.expression.text === "defineScript"
-      ) {
-        return factory.createExpressionStatement(
-          factory.createAssignment(factory.createIdentifier(CONFIG_GLOBAL), statement.expression),
-        );
-      }
-      return statement;
-    });
+  const transformer: ts.TransformerFactory<ts.SourceFile> =
+    (context) => (root) => {
+      const { factory } = context
+      const statements = root.statements.map((statement) => {
+        // Validation guarantees the module is exactly one `defineScript({ … })`
+        // expression statement; binding its result is all the guest needs.
+        if (
+          ts.isExpressionStatement(statement) &&
+          ts.isCallExpression(statement.expression) &&
+          ts.isIdentifier(statement.expression.expression) &&
+          statement.expression.expression.text === "defineScript"
+        ) {
+          return factory.createExpressionStatement(
+            factory.createAssignment(
+              factory.createIdentifier(CONFIG_GLOBAL),
+              statement.expression
+            )
+          )
+        }
+        return statement
+      })
 
-    return factory.updateSourceFile(root, statements);
-  };
+      return factory.updateSourceFile(root, statements)
+    }
 
-  const transformed = ts.transform(file, [transformer]);
-  const printed = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }).printFile(
-    transformed.transformed[0]!,
-  );
-  transformed.dispose();
+  const transformed = ts.transform(file, [transformer])
+  const [transformedFile] = transformed.transformed
+  if (!transformedFile) {
+    throw new Error("the transform returned no file for its one input")
+  }
+  const printed = ts
+    .createPrinter({ newLine: ts.NewLineKind.LineFeed })
+    .printFile(transformedFile)
+  transformed.dispose()
 
   // No imports or exports survive, so this is a plain script.
   return ts.transpileModule(printed, {
@@ -52,5 +66,5 @@ export function compileScript(source: string): string {
       module: ts.ModuleKind.ESNext,
       removeComments: true,
     },
-  }).outputText;
+  }).outputText
 }

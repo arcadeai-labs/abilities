@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to a PR makes the previous run's answer worthless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Reads the pnpm version from package.json's `packageManager` field, so it
+      # tracks the repo rather than being pinned twice.
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          # Matches `engines.node` in package.json. Pinned to the major rather
+          # than read from the ">=24" range, which would drift onto whatever the
+          # newest major happens to be.
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The same gate the pre-push hook runs: turbo typecheck across every
+      # package, then `biome check --error-on-warnings .`. No tests — `@repo/api`'s
+      # suite calls the real Arcade API and would need a key and a synced catalog.
+      - run: pnpm run check

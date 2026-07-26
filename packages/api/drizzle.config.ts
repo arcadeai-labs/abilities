@@ -1,4 +1,4 @@
-import { defineConfig } from "drizzle-kit";
+import { defineConfig } from "drizzle-kit"
 
 export default defineConfig({
   schema: "./src/schema.ts",
@@ -9,4 +9,4 @@ export default defineConfig({
   // src/paths.ts. drizzle-kit always runs from this package, hence the relative
   // path rather than that lookup.
   dbCredentials: { url: "../../pgdata" },
-});
+})

@@ -63,6 +63,20 @@ cannot both hold the database.
   Don't add `dotenv`. The file is the **workspace-root `.env`**, shared by the
   scripts and by the frontend (whose Vite config loads it, since that process
   hosts the API). `apps/frontend/.env` still overrides it if present.
+- `pnpm run check` is the gate: `turbo run typecheck` then
+  `biome check --error-on-warnings .`. The flag is load-bearing — plain
+  `biome check` exits 0 on warnings, so without it a warn-severity rule is
+  invisible to everything automated. `pnpm fmt` writes the auto-fixable half.
+- That command runs in two places, which is the reason to keep it fast:
+  `.githooks/pre-push` before anything leaves the machine, and
+  `.github/workflows/ci.yml` on PRs and pushes to main. The hook is wired by the
+  root `prepare` script pointing `core.hooksPath` at `.githooks`, so `pnpm
+  install` is the whole setup and the hook is reviewable in-tree instead of
+  hiding in an untracked `.git/hooks` — which also makes it apply in every git
+  worktree. It checks the **working tree**, not the commits being pushed, so
+  dirty local edits can block a push of clean commits; `--no-verify` overrides.
+- Neither gate runs the tests: `@repo/api`'s suite calls the real Arcade API and
+  wants the PGlite lock, so it stays a deliberate `pnpm --filter @repo/api test`.
 
 ## API (`packages/api`)
 

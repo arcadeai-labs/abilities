@@ -1,6 +1,13 @@
-import type { ToolDefinition } from "@arcadeai/arcadejs/resources/tools/tools";
-import { index, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import type { ToolInput, ToolOutput } from "./value-schema";
+import type { ToolDefinition } from "@arcadeai/arcadejs/resources/tools/tools"
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core"
+import type { ToolInput, ToolOutput } from "./value-schema"
 
 export const tools = pgTable(
   "tools",
@@ -19,7 +26,8 @@ export const tools = pgTable(
     output: jsonb("output").$type<ToolOutput>(),
     requirements: jsonb("requirements").$type<ToolDefinition["requirements"]>(),
     metadata: jsonb("metadata").$type<ToolDefinition["metadata"]>(),
-    formattedSchema: jsonb("formatted_schema").$type<ToolDefinition["formatted_schema"]>(),
+    formattedSchema:
+      jsonb("formatted_schema").$type<ToolDefinition["formatted_schema"]>(),
     raw: jsonb("raw").$type<ToolDefinition>().notNull(),
     /**
      * Stamped with the current run's start time on every upsert. Rows left with an
@@ -27,11 +35,14 @@ export const tools = pgTable(
      */
     syncedAt: timestamp("synced_at", { withTimezone: true }).notNull(),
   },
-  (t) => [index("tools_toolkit_name_idx").on(t.toolkitName), index("tools_name_idx").on(t.name)],
-);
+  (t) => [
+    index("tools_toolkit_name_idx").on(t.toolkitName),
+    index("tools_name_idx").on(t.name),
+  ]
+)
 
-export type ToolRow = typeof tools.$inferSelect;
-export type NewToolRow = typeof tools.$inferInsert;
+export type ToolRow = typeof tools.$inferSelect
+export type NewToolRow = typeof tools.$inferInsert
 
 /**
  * Stored scripts.
@@ -58,9 +69,11 @@ export const scripts = pgTable("scripts", {
   /** The author's `async run(input, { … }) { … }` method, verbatim. */
   run: text("run").notNull(),
   /** JSON Schema for the run input, exactly as submitted. */
-  inputSchema: jsonb("input_schema").$type<unknown>().notNull(),
+  inputSchema: jsonb("input_schema").$type<Record<string, unknown>>().notNull(),
   /** JSON Schema the return value must satisfy, exactly as submitted. */
-  outputSchema: jsonb("output_schema").$type<unknown>().notNull(),
+  outputSchema: jsonb("output_schema")
+    .$type<Record<string, unknown>>()
+    .notNull(),
   /**
    * Toolkits put in scope for `run`, as submitted: `["gmail", "linear"]`.
    *
@@ -88,9 +101,9 @@ export const scripts = pgTable("scripts", {
   version: integer("version").notNull().default(1),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-});
+})
 
-export type ScriptRow = typeof scripts.$inferSelect;
+export type ScriptRow = typeof scripts.$inferSelect
 
 /** One execution. Written before the sandbox starts, so tool effects are never unrecorded. */
 export const runs = pgTable(
@@ -110,7 +123,10 @@ export const runs = pgTable(
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
-  (t) => [index("runs_script_id_idx").on(t.scriptId), index("runs_started_at_idx").on(t.startedAt)],
-);
+  (t) => [
+    index("runs_script_id_idx").on(t.scriptId),
+    index("runs_started_at_idx").on(t.startedAt),
+  ]
+)
 
-export type RunRow = typeof runs.$inferSelect;
+export type RunRow = typeof runs.$inferSelect

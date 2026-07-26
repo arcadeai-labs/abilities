@@ -8,30 +8,31 @@
  * and a stored row can drift.
  */
 
-import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
-import { checkAuthorization, executeTool, ToolExecutionError } from "./arcade";
-import { loadCatalog } from "./catalog";
-import { compileScript } from "./compile";
-import { db } from "./db";
-import { validateSpec, type Violation } from "./schema-dsl";
-import { runs, type ScriptRow, scripts } from "./schema";
-import { contractFrom, type ScriptParams } from "./assemble";
-import { validateScript, type ValidationResult } from "./validate";
+import { randomUUID } from "node:crypto"
+import { eq } from "drizzle-orm"
+import { checkAuthorization, executeTool, ToolExecutionError } from "./arcade"
+import { contractFrom, type ScriptParams } from "./assemble"
+import { loadCatalog } from "./catalog"
+import { compileScript } from "./compile"
+import { db } from "./db"
+import { runs, type ScriptRow, scripts } from "./schema"
+import { isRecord, type Violation, validateSpec } from "./schema-dsl"
+import { type ValidationResult, validateScript } from "./validate"
 
-const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
+const id = (prefix: string) =>
+  `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 24)}`
 
 /** The request body a stored row came from; every column here was submitted. */
 export const paramsOf = (row: ScriptRow): ScriptParams => ({
-  input: row.inputSchema as ScriptParams["input"],
-  output: row.outputSchema as ScriptParams["output"],
+  input: row.inputSchema,
+  output: row.outputSchema,
   toolkits: row.toolkits,
   run: row.run,
-});
+})
 
 export type StoreResult =
   | { ok: true; script: ScriptRow; created: boolean }
-  | { ok: false; validation: ValidationResult };
+  | { ok: false; validation: ValidationResult }
 
 /**
  * Validates, then stores. Never the other way round — which is what lets the
@@ -41,16 +42,16 @@ export type StoreResult =
  * script twice updates it instead of failing, and the caller needs no read first.
  */
 export async function upsertScript(input: {
-  name: string;
-  description?: string | null;
-  params: ScriptParams;
+  name: string
+  description?: string | null
+  params: ScriptParams
 }): Promise<StoreResult> {
-  const validation = await validateScript(input.params);
+  const validation = await validateScript(input.params)
   if (!validation.ok || !validation.contract || !validation.source) {
-    return { ok: false, validation };
+    return { ok: false, validation }
   }
 
-  const now = new Date();
+  const now = new Date()
   const row = {
     name: input.name,
     description: input.description ?? null,
@@ -62,66 +63,82 @@ export async function upsertScript(input: {
     toolGrant: validation.grant,
     snapshotId: validation.snapshotId,
     updatedAt: now,
-  };
+  }
 
   const [existing] = await db
     .select({ id: scripts.id, version: scripts.version })
     .from(scripts)
-    .where(eq(scripts.name, input.name));
+    .where(eq(scripts.name, input.name))
 
   if (existing) {
     const [updated] = await db
       .update(scripts)
       .set({ ...row, version: existing.version + 1 })
       .where(eq(scripts.id, existing.id))
-      .returning();
-    return { ok: true, script: updated!, created: false };
+      .returning()
+    if (!updated) {
+      throw new Error(`updating script ${existing.id} returned no row`)
+    }
+    return { ok: true, script: updated, created: false }
   }
 
   const [created] = await db
     .insert(scripts)
     .values({ ...row, id: id("scr"), version: 1, createdAt: now })
-    .returning();
-  return { ok: true, script: created!, created: true };
+    .returning()
+  if (!created) throw new Error("inserting a script returned no row")
+  return { ok: true, script: created, created: true }
 }
 
 export type RunOutcome =
   | { kind: "ok"; output: unknown }
   | { kind: "input_invalid"; violations: Violation[] }
-  | { kind: "authorization_required"; tools: { qualifiedName: string; authUrl?: string }[] }
+  | {
+      kind: "authorization_required"
+      tools: { qualifiedName: string; authUrl?: string }[]
+    }
   | { kind: "script_error"; name: string; message: string }
   | { kind: "tool_error"; tool: string; message: string }
   | { kind: "contract_violation"; violations: Violation[] }
-  | { kind: "limit_exceeded"; limit: string; message: string };
+  | { kind: "limit_exceeded"; limit: string; message: string }
 
 export type RunReport = {
-  runId: string;
-  outcome: RunOutcome;
-  logs: string[];
-  toolCalls: { path: string; qualifiedName: string; ok: boolean; durationMs: number; error?: string }[];
+  runId: string
+  outcome: RunOutcome
+  logs: string[]
+  toolCalls: {
+    path: string
+    qualifiedName: string
+    ok: boolean
+    durationMs: number
+    error?: string
+  }[]
   /** Places the catalog's declared shape did not match what a tool actually returned. */
-  drift: { tool: string; violations: Violation[] }[];
-  durationMs: number;
-};
+  drift: { tool: string; violations: Violation[] }[]
+  durationMs: number
+}
 
 export async function runScript(options: {
-  script: ScriptRow;
-  input: unknown;
-  userId: string;
+  script: ScriptRow
+  input: unknown
+  userId: string
 }): Promise<RunReport> {
-  const catalog = await loadCatalog();
-  const grant = options.script.toolGrant;
+  const catalog = await loadCatalog()
+  const grant = options.script.toolGrant
 
   // Rebuilt from the stored JSON Schemas rather than kept as a column: the row was
   // validated through this same conversion, so it cannot disagree with itself.
-  const { contract } = contractFrom(paramsOf(options.script));
-  if (!contract) throw new Error(`script ${options.script.name} has an unreadable contract`);
+  const { contract } = contractFrom(paramsOf(options.script))
+  if (!contract)
+    throw new Error(`script ${options.script.name} has an unreadable contract`)
 
-  const runId = id("run");
-  const startedAt = new Date();
+  const runId = id("run")
+  const startedAt = new Date()
 
-  const finish = async (report: Omit<RunReport, "runId">): Promise<RunReport> => {
-    const full: RunReport = { ...report, runId };
+  const finish = async (
+    report: Omit<RunReport, "runId">
+  ): Promise<RunReport> => {
+    const full: RunReport = { ...report, runId }
     await db
       .update(runs)
       .set({
@@ -131,9 +148,9 @@ export async function runScript(options: {
         durationMs: full.durationMs,
         finishedAt: new Date(),
       })
-      .where(eq(runs.id, runId));
-    return full;
-  };
+      .where(eq(runs.id, runId))
+    return full
+  }
 
   // Written before anything executes: a run that dies mid-way must still leave a
   // record of the tool calls it already made.
@@ -144,9 +161,9 @@ export async function runScript(options: {
     userId: options.userId,
     input: options.input,
     startedAt,
-  });
+  })
 
-  const inputViolations = validateSpec(contract.input, options.input);
+  const inputViolations = validateSpec(contract.input, options.input)
   if (inputViolations.length > 0) {
     return finish({
       outcome: { kind: "input_invalid", violations: inputViolations },
@@ -154,14 +171,14 @@ export async function runScript(options: {
       toolCalls: [],
       drift: [],
       durationMs: 0,
-    });
+    })
   }
 
   const needsAuth = Object.values(grant).filter(
-    (qualifiedName) => catalog.runtime.get(qualifiedName)?.requiresAuth,
-  );
+    (qualifiedName) => catalog.runtime.get(qualifiedName)?.requiresAuth
+  )
   if (needsAuth.length > 0) {
-    const authorization = await checkAuthorization(needsAuth, options.userId);
+    const authorization = await checkAuthorization(needsAuth, options.userId)
     if (!authorization.ready) {
       return finish({
         outcome: {
@@ -174,115 +191,150 @@ export async function runScript(options: {
         toolCalls: [],
         drift: [],
         durationMs: 0,
-      });
+      })
     }
   }
 
-  const drift: RunReport["drift"] = [];
-  let toolError: { tool: string; message: string } | undefined;
+  const drift: RunReport["drift"] = []
+  let toolError: { tool: string; message: string } | undefined
 
-  const { runInSandbox } = await import("./sandbox");
+  const { runInSandbox } = await import("./sandbox")
   const run = await runInSandbox({
     compiled: options.script.compiled,
     grant,
     input: options.input,
     callTool: async (qualifiedName, path, args) => {
-      const runtime = catalog.runtime.get(qualifiedName);
+      const runtime = catalog.runtime.get(qualifiedName)
 
       // The type checker already covered this; doing it again costs nothing and
       // holds even if the stored compiled source and grant ever disagree.
       const argumentViolations = runtime
         ? validateSpec(runtime.input, args ?? {})
-        : [{ path: "(root)", message: `unknown tool ${qualifiedName}` }];
+        : [{ path: "(root)", message: `unknown tool ${qualifiedName}` }]
       if (argumentViolations.length > 0) {
         throw new ToolExecutionError(
-          `Arguments to \`${path}\` are invalid: ${describe(argumentViolations)}`,
-        );
+          `Arguments to \`${path}\` are invalid: ${describe(argumentViolations)}`
+        )
       }
 
-      const result = await executeTool(qualifiedName, args as Record<string, unknown>, options.userId);
+      const result = await executeTool(
+        qualifiedName,
+        isRecord(args) ? args : {},
+        options.userId
+      )
 
       // A catalog-declared shape is descriptive, not contractual: a vendor adding a
       // field must not fail a run, so a mismatch is recorded rather than thrown.
       if (runtime?.output) {
-        const violations = validateSpec(runtime.output, result);
-        if (violations.length > 0) drift.push({ tool: qualifiedName, violations });
+        const violations = validateSpec(runtime.output, result)
+        if (violations.length > 0)
+          drift.push({ tool: qualifiedName, violations })
       }
 
-      return result;
+      return result
     },
-  });
+  })
 
   // A rejected tool call surfaces to the guest, which may swallow it; the host's
   // own record is what decides whether this was the script's fault or a tool's.
-  const failedCall = run.toolCalls.find((call) => !call.ok);
-  if (failedCall) toolError = { tool: failedCall.qualifiedName, message: failedCall.error ?? "failed" };
+  const failedCall = run.toolCalls.find((call) => !call.ok)
+  if (failedCall)
+    toolError = {
+      tool: failedCall.qualifiedName,
+      message: failedCall.error ?? "failed",
+    }
 
   const shared = {
     logs: run.logs,
     toolCalls: run.toolCalls,
     drift,
     durationMs: run.durationMs,
-  };
+  }
 
   if (run.result.kind === "limit_exceeded") {
     return finish({
-      outcome: { kind: "limit_exceeded", limit: run.result.limit, message: run.result.message },
+      outcome: {
+        kind: "limit_exceeded",
+        limit: run.result.limit,
+        message: run.result.message,
+      },
       ...shared,
-    });
+    })
   }
 
   if (run.result.kind === "script_error") {
     return finish({
       outcome: toolError
         ? { kind: "tool_error", ...toolError }
-        : { kind: "script_error", name: run.result.name, message: run.result.message },
+        : {
+            kind: "script_error",
+            name: run.result.name,
+            message: run.result.message,
+          },
       ...shared,
-    });
+    })
   }
 
-  const outputViolations = validateSpec(contract.output, run.result.output);
+  const outputViolations = validateSpec(contract.output, run.result.output)
   if (outputViolations.length > 0) {
-    return finish({ outcome: { kind: "contract_violation", violations: outputViolations }, ...shared });
+    return finish({
+      outcome: { kind: "contract_violation", violations: outputViolations },
+      ...shared,
+    })
   }
 
-  return finish({ outcome: { kind: "ok", output: run.result.output }, ...shared });
+  return finish({
+    outcome: { kind: "ok", output: run.result.output },
+    ...shared,
+  })
 }
 
 const describe = (violations: Violation[]) =>
   violations
     .slice(0, 3)
     .map((violation) => `${violation.path} ${violation.message}`)
-    .join("; ");
+    .join("; ")
 
 /** Re-checks every stored script against the current catalog. */
 export async function revalidateAll(): Promise<{
-  snapshotId: string;
-  checked: number;
-  stale: { id: string; name: string; diagnostics: number; firstError: string | null }[];
+  snapshotId: string
+  checked: number
+  stale: {
+    id: string
+    name: string
+    diagnostics: number
+    firstError: string | null
+  }[]
 }> {
-  const catalog = await loadCatalog();
-  const rows = await db.select().from(scripts);
-  const stale: { id: string; name: string; diagnostics: number; firstError: string | null }[] = [];
+  const catalog = await loadCatalog()
+  const rows = await db.select().from(scripts)
+  const stale: {
+    id: string
+    name: string
+    diagnostics: number
+    firstError: string | null
+  }[] = []
 
   for (const row of rows) {
-    const validation = await validateScript(paramsOf(row));
+    const validation = await validateScript(paramsOf(row))
     if (validation.ok) {
       if (row.snapshotId !== catalog.snapshotId) {
         await db
           .update(scripts)
           .set({ snapshotId: catalog.snapshotId, toolGrant: validation.grant })
-          .where(eq(scripts.id, row.id));
+          .where(eq(scripts.id, row.id))
       }
-      continue;
+      continue
     }
     stale.push({
       id: row.id,
       name: row.name,
       diagnostics: validation.diagnostics.length,
-      firstError: validation.diagnostics.find((d) => d.severity === "error")?.message ?? null,
-    });
+      firstError:
+        validation.diagnostics.find((d) => d.severity === "error")?.message ??
+        null,
+    })
   }
 
-  return { snapshotId: catalog.snapshotId, checked: rows.length, stale };
+  return { snapshotId: catalog.snapshotId, checked: rows.length, stale }
 }

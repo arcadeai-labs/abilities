@@ -1,8 +1,8 @@
-import { defineConfig, loadEnv, type Plugin } from "vite"
+import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import viteReact from "@vitejs/plugin-react"
-import tailwindcss from "@tailwindcss/vite"
+import { defineConfig, loadEnv, type Plugin } from "vite"
 
 const workspaceRoot = new URL("../../", import.meta.url).pathname
 
@@ -30,7 +30,11 @@ const rootEnv = (): Plugin => ({
 const closeDb = (): Plugin => ({
   name: "repo:close-db",
   closeBundle: async () => {
-    await (globalThis as { __repoApiDb?: { close: () => Promise<void> } }).__repoApiDb?.close()
+    const handle: { close: () => Promise<void> } | undefined = Reflect.get(
+      globalThis,
+      "__repoApiDb"
+    )
+    await handle?.close()
   },
 })
 
@@ -56,7 +60,14 @@ const config = defineConfig({
     noExternal: ["@repo/api"],
     external: ["@electric-sql/pglite"],
   },
-  plugins: [rootEnv(), closeDb(), devtools(), tailwindcss(), tanstackStart(), viteReact()],
+  plugins: [
+    rootEnv(),
+    closeDb(),
+    devtools(),
+    tailwindcss(),
+    tanstackStart(),
+    viteReact(),
+  ],
 })
 
 export default config

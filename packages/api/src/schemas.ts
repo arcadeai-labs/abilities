@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "zod"
 
 /** `?toolkit=Github&toolkit=Slack` or `?toolkit=Github,Slack` — both collapse to string[]. */
 export const ToolsQuerySchema = z.object({
@@ -8,32 +8,53 @@ export const ToolsQuerySchema = z.object({
     .transform((v) =>
       v === undefined
         ? undefined
-        : (Array.isArray(v) ? v : [v]).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean),
+        : (Array.isArray(v) ? v : [v])
+            .flatMap((s) => s.split(","))
+            .map((s) => s.trim())
+            .filter(Boolean)
     )
-    .describe("Optional toolkit name(s) to filter by. Repeatable or comma-separated."),
-  limit: z.coerce.number().int().min(1).max(1000).default(100).describe("Max tools to return."),
-  offset: z.coerce.number().int().min(0).default(0).describe("Number of tools to skip."),
-});
+    .describe(
+      "Optional toolkit name(s) to filter by. Repeatable or comma-separated."
+    ),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(1000)
+    .default(100)
+    .describe("Max tools to return."),
+  offset: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .describe("Number of tools to skip."),
+})
 
 export const ToolkitSchema = z
   .object({
     name: z.string().describe("Toolkit name, e.g. `GithubApi`."),
-    description: z.string().nullable().describe("Toolkit description, if the upstream API supplied one."),
+    description: z
+      .string()
+      .nullable()
+      .describe("Toolkit description, if the upstream API supplied one."),
     version: z.string().nullable().describe("Toolkit version."),
     toolCount: z.int().describe("Number of tools belonging to this toolkit."),
   })
-  .meta({ id: "Toolkit" });
+  .meta({ id: "Toolkit" })
 
 export const ToolkitsResponseSchema = z
   .object({
     total: z.int().describe("Number of distinct toolkits."),
     toolkits: z.array(ToolkitSchema),
   })
-  .meta({ id: "ToolkitsResponse" });
+  .meta({ id: "ToolkitsResponse" })
 
 export const ToolSchema = z
   .object({
-    fullyQualifiedName: z.string().describe("Unique tool identifier including version."),
+    fullyQualifiedName: z
+      .string()
+      .describe("Unique tool identifier including version."),
     name: z.string(),
     qualifiedName: z.string(),
     description: z.string().nullable(),
@@ -44,34 +65,43 @@ export const ToolSchema = z
     requirements: z.unknown().describe("Auth and secret requirements."),
     metadata: z.unknown().describe("Behaviour and classification metadata."),
   })
-  .meta({ id: "Tool" });
+  .meta({ id: "Tool" })
 
 export const ToolsResponseSchema = z
   .object({
-    total: z.int().describe("Total tools matching the filter, ignoring limit/offset."),
+    total: z
+      .int()
+      .describe("Total tools matching the filter, ignoring limit/offset."),
     limit: z.int(),
     offset: z.int(),
-    toolkits: z.array(z.string()).nullable().describe("The toolkit filter that was applied, if any."),
+    toolkits: z
+      .array(z.string())
+      .nullable()
+      .describe("The toolkit filter that was applied, if any."),
     tools: z.array(ToolSchema),
   })
-  .meta({ id: "ToolsResponse" });
+  .meta({ id: "ToolsResponse" })
 
 export const SeedResponseSchema = z
   .object({
     fetched: z.int().describe("Tool records received across all pages."),
     unique: z.int().describe("Distinct tools after collapsing duplicates."),
-    duplicates: z.int().describe("Records collapsed because a page repeated a tool."),
-    swept: z.int().describe("Rows deleted because they no longer exist upstream."),
+    duplicates: z
+      .int()
+      .describe("Records collapsed because a page repeated a tool."),
+    swept: z
+      .int()
+      .describe("Rows deleted because they no longer exist upstream."),
     totalCount: z.int().describe("`total_count` reported by the Arcade API."),
     pages: z.int().describe("Pages walked."),
     rows: z.int().describe("Row count in the table after the sync."),
     durationMs: z.int(),
   })
-  .meta({ id: "SeedResponse" });
+  .meta({ id: "SeedResponse" })
 
 export const ErrorResponseSchema = z
   .object({ error: z.string(), message: z.string() })
-  .meta({ id: "ErrorResponse" });
+  .meta({ id: "ErrorResponse" })
 
 /** `?toolkit=Github,Slack` — same parsing as `ToolsQuerySchema`. */
 const toolkitFilter = z
@@ -80,14 +110,17 @@ const toolkitFilter = z
   .transform((v) =>
     v === undefined
       ? undefined
-      : (Array.isArray(v) ? v : [v]).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean),
-  );
+      : (Array.isArray(v) ? v : [v])
+          .flatMap((s) => s.split(","))
+          .map((s) => s.trim())
+          .filter(Boolean)
+  )
 
 export const TypesQuerySchema = z.object({
   toolkit: toolkitFilter.describe(
-    "Toolkit name(s) to emit declarations for. Omit to emit the whole catalog, which is large.",
+    "Toolkit name(s) to emit declarations for. Omit to emit the whole catalog, which is large."
   ),
-});
+})
 
 export const CoverageResponseSchema = z
   .object({
@@ -98,7 +131,9 @@ export const CoverageResponseSchema = z
       .describe("Hand-authored toolkits."),
     generated: z
       .object({ toolkits: z.int(), tools: z.int(), typed: z.int() })
-      .describe("Toolkits generated from OpenAPI specs, which declare no output shapes."),
+      .describe(
+        "Toolkits generated from OpenAPI specs, which declare no output shapes."
+      ),
     toolkits: z.array(
       z.object({
         toolkit: z.string(),
@@ -106,49 +141,64 @@ export const CoverageResponseSchema = z
         tools: z.int(),
         typed: z.int().describe("Tools declaring an output shape."),
         generated: z.boolean(),
-      }),
+      })
     ),
   })
-  .meta({ id: "CoverageResponse" });
+  .meta({ id: "CoverageResponse" })
 
 export const DiagnosticSchema = z
   .object({
     category: z
       .enum(["policy", "type", "contract"])
-      .describe("`policy` from the syntax rules, `type` from the compiler, `contract` from the schemas."),
+      .describe(
+        "`policy` from the syntax rules, `type` from the compiler, `contract` from the schemas."
+      ),
     code: z.string().describe("`TS2322`, `policy/no-eval`, …"),
     severity: z.enum(["error", "warning"]),
     message: z.string(),
     start: z.object({ line: z.int(), column: z.int() }),
     end: z.object({ line: z.int(), column: z.int() }),
   })
-  .meta({ id: "Diagnostic" });
+  .meta({ id: "Diagnostic" })
 
 export const ValidationSchema = z
   .object({
     ok: z.boolean(),
-    snapshotId: z.string().describe("The catalog snapshot this was checked against."),
+    snapshotId: z
+      .string()
+      .describe("The catalog snapshot this was checked against."),
     diagnostics: z.array(DiagnosticSchema),
-    toolkits: z.array(z.string()).describe("Toolkits put in scope, as declared."),
+    toolkits: z
+      .array(z.string())
+      .describe("Toolkits put in scope, as declared."),
     grant: z
       .record(z.string(), z.string())
-      .describe("`github.getIssue` to `Github.GetIssue` — every tool this script may call."),
-    source: z.string().nullable().describe("The module that was checked, assembled from the parts."),
+      .describe(
+        "`github.getIssue` to `Github.GetIssue` — every tool this script may call."
+      ),
+    source: z
+      .string()
+      .nullable()
+      .describe("The module that was checked, assembled from the parts."),
     outputCoverage: z.array(
       z.object({
         path: z.string(),
         qualifiedName: z.string(),
         typed: z
           .boolean()
-          .describe("False means the result arrives as `unknown`; narrow it with `z.….parse()`."),
-      }),
+          .describe(
+            "False means the result arrives as `unknown`; narrow it with `z.….parse()`."
+          ),
+      })
     ),
   })
-  .meta({ id: "Validation" });
+  .meta({ id: "Validation" })
 
 const JsonSchemaSchema = z
   .record(z.string(), z.unknown())
-  .describe("A JSON Schema. Supported: type, enum, const, properties, required, items, additionalProperties, format, pattern, min/max, nullable.");
+  .describe(
+    "A JSON Schema. Supported: type, enum, const, properties, required, items, additionalProperties, format, pattern, min/max, nullable."
+  )
 
 export const ScriptParamsSchema = z
   .object({
@@ -158,22 +208,22 @@ export const ScriptParamsSchema = z
       .array(z.string())
       .default([])
       .describe(
-        "Toolkits to put in scope, by namespace — `[\"gmail\", \"linear\"]`. These become the " +
+        'Toolkits to put in scope, by namespace — `["gmail", "linear"]`. These become the ' +
           "properties of `run`'s context object. Which tools within them the script may call, " +
-          "and therefore which OAuth scopes are requested, follows from the calls it makes.",
+          "and therefore which OAuth scopes are requested, follows from the calls it makes."
       ),
     run: z
       .string()
       .describe(
         "The method source, starting `async run(input, { ... })`. Destructuring the second " +
-          "parameter is what grants tool access. A script imports nothing.",
+          "parameter is what grants tool access. A script imports nothing."
       ),
   })
-  .meta({ id: "ScriptParams" });
+  .meta({ id: "ScriptParams" })
 
 export const UpsertScriptSchema = ScriptParamsSchema.extend({
   description: z.string().max(500).optional(),
-}).meta({ id: "UpsertScript" });
+}).meta({ id: "UpsertScript" })
 
 export const ScriptSchema = z
   .object({
@@ -186,18 +236,28 @@ export const ScriptSchema = z
     version: z.int(),
     grant: z
       .record(z.string(), z.string())
-      .describe("`github.getIssue` to `Github.GetIssue` — every tool this script may call."),
-    toolkits: z.array(z.string()).describe("Toolkits put in scope, as submitted."),
+      .describe(
+        "`github.getIssue` to `Github.GetIssue` — every tool this script may call."
+      ),
+    toolkits: z
+      .array(z.string())
+      .describe("Toolkits put in scope, as submitted."),
     snapshotId: z.string(),
-    stale: z.boolean().describe("True when the catalog moved on since this was validated."),
+    stale: z
+      .boolean()
+      .describe("True when the catalog moved on since this was validated."),
     createdAt: z.string(),
     updatedAt: z.string(),
   })
-  .meta({ id: "Script" });
+  .meta({ id: "Script" })
 
 export const ScriptsResponseSchema = z
-  .object({ total: z.int(), snapshotId: z.string(), scripts: z.array(ScriptSchema) })
-  .meta({ id: "ScriptsResponse" });
+  .object({
+    total: z.int(),
+    snapshotId: z.string(),
+    scripts: z.array(ScriptSchema),
+  })
+  .meta({ id: "ScriptsResponse" })
 
 export const RunRequestSchema = z
   .object({
@@ -212,18 +272,24 @@ export const RunRequestSchema = z
       .unknown()
       .optional()
       .meta({ examples: [{}] })
-      .describe("Validated against the script's declared `input` schema. Defaults to `{}`."),
+      .describe(
+        "Validated against the script's declared `input` schema. Defaults to `{}`."
+      ),
     userId: z
       .string()
       .min(1)
-      .describe("The Arcade end user to run as. Tools execute with that user's authorizations."),
+      .describe(
+        "The Arcade end user to run as. Tools execute with that user's authorizations."
+      ),
   })
-  .meta({ id: "RunRequest" });
+  .meta({ id: "RunRequest" })
 
 export const RunReportSchema = z
   .object({
     runId: z.string(),
-    outcome: z.unknown().describe("Discriminated on `kind`; the HTTP status summarises it."),
+    outcome: z
+      .unknown()
+      .describe("Discriminated on `kind`; the HTTP status summarises it."),
     logs: z.array(z.string()),
     toolCalls: z.array(
       z.object({
@@ -232,14 +298,23 @@ export const RunReportSchema = z
         ok: z.boolean(),
         durationMs: z.int(),
         error: z.string().optional(),
-      }),
+      })
     ),
     drift: z
-      .array(z.object({ tool: z.string(), violations: z.array(z.object({ path: z.string(), message: z.string() })) }))
-      .describe("Where a tool's real result contradicted the catalog's declared shape."),
+      .array(
+        z.object({
+          tool: z.string(),
+          violations: z.array(
+            z.object({ path: z.string(), message: z.string() })
+          ),
+        })
+      )
+      .describe(
+        "Where a tool's real result contradicted the catalog's declared shape."
+      ),
     durationMs: z.int(),
   })
-  .meta({ id: "RunReport" });
+  .meta({ id: "RunReport" })
 
 export const RevalidateResponseSchema = z
   .object({
@@ -251,7 +326,7 @@ export const RevalidateResponseSchema = z
         name: z.string(),
         diagnostics: z.int(),
         firstError: z.string().nullable(),
-      }),
+      })
     ),
   })
-  .meta({ id: "RevalidateResponse" });
+  .meta({ id: "RevalidateResponse" })

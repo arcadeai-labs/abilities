@@ -1,5 +1,5 @@
-import { hc, type ClientRequestOptions } from "hono/client";
-import type { AppType } from "./app";
+import { type ClientRequestOptions, hc } from "hono/client"
+import type { AppType } from "./app"
 
 /**
  * Typed RPC over the same route table the server is built from. The base URL is
@@ -8,8 +8,8 @@ import type { AppType } from "./app";
  * `/api`; anything off-origin needs the full URL.
  */
 export const createClient = (baseUrl: string, options?: ClientRequestOptions) =>
-  hc<AppType>(baseUrl, options);
+  hc<AppType>(baseUrl, options)
 
-export type Client = ReturnType<typeof createClient>;
+export type Client = ReturnType<typeof createClient>
 
-export type { AppType };
+export type { AppType }
