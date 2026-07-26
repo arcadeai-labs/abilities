@@ -1,7 +1,7 @@
 import Arcade from "@arcadeai/arcadejs";
 import type { ToolDefinition } from "@arcadeai/arcadejs/resources/tools/tools";
 import { lt, sql } from "drizzle-orm";
-import { db, ensureMigrated } from "./db";
+import { db, migrateDb } from "./db";
 import { tools, type NewToolRow } from "./schema";
 
 const PAGE_SIZE = 100;
@@ -72,7 +72,7 @@ const upsert = (tx: Executor, rows: NewToolRow[]) =>
  */
 export async function syncTools(opts: { onPage?: (info: { page: number; offset: number; count: number; fetched: number; totalCount: number }) => void } = {}): Promise<SyncResult> {
   const startedAt = new Date();
-  await ensureMigrated();
+  await migrateDb();
 
   const client = new Arcade();
   const firstPage = await client.tools.list({ limit: PAGE_SIZE, offset: 0 });

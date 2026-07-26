@@ -72,3 +72,186 @@ export const SeedResponseSchema = z
 export const ErrorResponseSchema = z
   .object({ error: z.string(), message: z.string() })
   .meta({ id: "ErrorResponse" });
+
+/** `?toolkit=Github,Slack` — same parsing as `ToolsQuerySchema`. */
+const toolkitFilter = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((v) =>
+    v === undefined
+      ? undefined
+      : (Array.isArray(v) ? v : [v]).flatMap((s) => s.split(",")).map((s) => s.trim()).filter(Boolean),
+  );
+
+export const TypesQuerySchema = z.object({
+  toolkit: toolkitFilter.describe(
+    "Toolkit name(s) to emit declarations for. Omit to emit the whole catalog, which is large.",
+  ),
+});
+
+export const CoverageResponseSchema = z
+  .object({
+    snapshotId: z.string(),
+    totals: z.object({ toolkits: z.int(), tools: z.int(), typed: z.int() }),
+    curated: z
+      .object({ toolkits: z.int(), tools: z.int(), typed: z.int() })
+      .describe("Hand-authored toolkits."),
+    generated: z
+      .object({ toolkits: z.int(), tools: z.int(), typed: z.int() })
+      .describe("Toolkits generated from OpenAPI specs, which declare no output shapes."),
+    toolkits: z.array(
+      z.object({
+        toolkit: z.string(),
+        namespace: z.string().describe("How the toolkit is named in a script."),
+        tools: z.int(),
+        typed: z.int().describe("Tools declaring an output shape."),
+        generated: z.boolean(),
+      }),
+    ),
+  })
+  .meta({ id: "CoverageResponse" });
+
+export const DiagnosticSchema = z
+  .object({
+    category: z
+      .enum(["policy", "type", "contract"])
+      .describe("`policy` from the syntax rules, `type` from the compiler, `contract` from the schemas."),
+    code: z.string().describe("`TS2322`, `policy/no-eval`, …"),
+    severity: z.enum(["error", "warning"]),
+    message: z.string(),
+    start: z.object({ line: z.int(), column: z.int() }),
+    end: z.object({ line: z.int(), column: z.int() }),
+  })
+  .meta({ id: "Diagnostic" });
+
+export const ValidationSchema = z
+  .object({
+    ok: z.boolean(),
+    snapshotId: z.string().describe("The catalog snapshot this was checked against."),
+    diagnostics: z.array(DiagnosticSchema),
+    toolkits: z.array(z.string()).describe("Toolkits put in scope, as declared."),
+    grant: z
+      .record(z.string(), z.string())
+      .describe("`github.getIssue` to `Github.GetIssue` — every tool this script may call."),
+    source: z.string().nullable().describe("The module that was checked, assembled from the parts."),
+    outputCoverage: z.array(
+      z.object({
+        path: z.string(),
+        qualifiedName: z.string(),
+        typed: z
+          .boolean()
+          .describe("False means the result arrives as `unknown`; narrow it with `z.….parse()`."),
+      }),
+    ),
+  })
+  .meta({ id: "Validation" });
+
+const JsonSchemaSchema = z
+  .record(z.string(), z.unknown())
+  .describe("A JSON Schema. Supported: type, enum, const, properties, required, items, additionalProperties, format, pattern, min/max, nullable.");
+
+export const ScriptParamsSchema = z
+  .object({
+    input: JsonSchemaSchema.describe("Shape of the value `run` receives."),
+    output: JsonSchemaSchema.describe("Shape the return value must satisfy."),
+    toolkits: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "Toolkits to put in scope, by namespace — `[\"gmail\", \"linear\"]`. These become the " +
+          "properties of `run`'s context object. Which tools within them the script may call, " +
+          "and therefore which OAuth scopes are requested, follows from the calls it makes.",
+      ),
+    run: z
+      .string()
+      .describe(
+        "The method source, starting `async run(input, { ... })`. Destructuring the second " +
+          "parameter is what grants tool access. A script imports nothing.",
+      ),
+  })
+  .meta({ id: "ScriptParams" });
+
+export const UpsertScriptSchema = ScriptParamsSchema.extend({
+  description: z.string().max(500).optional(),
+}).meta({ id: "UpsertScript" });
+
+export const ScriptSchema = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    description: z.string().nullable(),
+    run: z.string().describe("The method source, as submitted."),
+    input: z.unknown().describe("JSON Schema, as submitted."),
+    output: z.unknown().describe("JSON Schema, as submitted."),
+    version: z.int(),
+    grant: z
+      .record(z.string(), z.string())
+      .describe("`github.getIssue` to `Github.GetIssue` — every tool this script may call."),
+    toolkits: z.array(z.string()).describe("Toolkits put in scope, as submitted."),
+    snapshotId: z.string(),
+    stale: z.boolean().describe("True when the catalog moved on since this was validated."),
+    createdAt: z.string(),
+    updatedAt: z.string(),
+  })
+  .meta({ id: "Script" });
+
+export const ScriptsResponseSchema = z
+  .object({ total: z.int(), snapshotId: z.string(), scripts: z.array(ScriptSchema) })
+  .meta({ id: "ScriptsResponse" });
+
+export const RunRequestSchema = z
+  .object({
+    /**
+     * Left untyped on purpose — the real shape is the script's own declared `input`,
+     * which this is validated against. Optional so a script that takes nothing can
+     * be run with just a `userId`, and given an example so tooling has something to
+     * put in the box: an untyped *required* property is one a generated client
+     * cannot fill, which ends up sending no body at all.
+     */
+    input: z
+      .unknown()
+      .optional()
+      .meta({ examples: [{}] })
+      .describe("Validated against the script's declared `input` schema. Defaults to `{}`."),
+    userId: z
+      .string()
+      .min(1)
+      .describe("The Arcade end user to run as. Tools execute with that user's authorizations."),
+  })
+  .meta({ id: "RunRequest" });
+
+export const RunReportSchema = z
+  .object({
+    runId: z.string(),
+    outcome: z.unknown().describe("Discriminated on `kind`; the HTTP status summarises it."),
+    logs: z.array(z.string()),
+    toolCalls: z.array(
+      z.object({
+        path: z.string(),
+        qualifiedName: z.string(),
+        ok: z.boolean(),
+        durationMs: z.int(),
+        error: z.string().optional(),
+      }),
+    ),
+    drift: z
+      .array(z.object({ tool: z.string(), violations: z.array(z.object({ path: z.string(), message: z.string() })) }))
+      .describe("Where a tool's real result contradicted the catalog's declared shape."),
+    durationMs: z.int(),
+  })
+  .meta({ id: "RunReport" });
+
+export const RevalidateResponseSchema = z
+  .object({
+    snapshotId: z.string(),
+    checked: z.int(),
+    stale: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        diagnostics: z.int(),
+        firstError: z.string().nullable(),
+      }),
+    ),
+  })
+  .meta({ id: "RevalidateResponse" });

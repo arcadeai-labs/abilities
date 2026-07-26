@@ -8,6 +8,48 @@
       "when": 1784958350654,
       "tag": "0000_early_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784971184119,
+      "tag": "0001_tired_silver_surfer",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785036061931,
+      "tag": "0002_next_ultimo",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785036945009,
+      "tag": "0003_mute_ultimates",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785037249348,
+      "tag": "0004_old_wallflower",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785038468323,
+      "tag": "0005_bouncy_reptil",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785040170925,
+      "tag": "0006_brave_mariko_yashida",
+      "breakpoints": true
     }
   ]
 }

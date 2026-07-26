@@ -27,5 +27,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["src", "sync.ts", "drizzle.config.ts"]
+  "include": ["src", "sync.ts", "smoke.ts", "drizzle.config.ts"]
 }
