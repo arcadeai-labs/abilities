@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 
 import { Button } from "./button"
-import { toast, Toaster } from "./toast"
+import { Toaster, toast } from "./toast"
 
 const meta = {
   title: "atoms/Toast",

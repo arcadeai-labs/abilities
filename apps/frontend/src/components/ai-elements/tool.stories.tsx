@@ -1,12 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
 
-import {
-  Tool,
-  ToolContent,
-  ToolHeader,
-  ToolInput,
-  ToolOutput,
-} from "./tool"
+import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "./tool"
 
 const meta = {
   title: "molecules/Tool",
@@ -62,13 +56,16 @@ export const Pending: Story = {
   ),
 }
 
-export const Error: Story = {
+export const Failed: Story = {
   render: () => (
     <Tool defaultOpen>
       <ToolHeader state="output-error" type="tool-read_file" />
       <ToolContent>
         <ToolInput input={{ path: "/missing/file.ts" }} />
-        <ToolOutput errorText="ENOENT: no such file or directory" output={undefined} />
+        <ToolOutput
+          errorText="ENOENT: no such file or directory"
+          output={undefined}
+        />
       </ToolContent>
     </Tool>
   ),

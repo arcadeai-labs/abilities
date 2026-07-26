@@ -1,5 +1,10 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
-import { CopyIcon, RefreshCwIcon, ThumbsDownIcon, ThumbsUpIcon } from "lucide-react"
+import {
+  CopyIcon,
+  RefreshCwIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+} from "lucide-react"
 
 import {
   Message,
@@ -36,7 +41,9 @@ export const User: Story = {
   render: () => (
     <Message from="user">
       <MessageContent>
-        <MessageResponse>How do I stream tokens with the AI SDK?</MessageResponse>
+        <MessageResponse>
+          How do I stream tokens with the AI SDK?
+        </MessageResponse>
       </MessageContent>
     </Message>
   ),
@@ -93,7 +100,9 @@ export const Branched: Story = {
       <MessageBranch defaultBranch={0}>
         <MessageBranchContent>
           <MessageContent key="a">
-            <MessageResponse>First branch: prefer the concise answer.</MessageResponse>
+            <MessageResponse>
+              First branch: prefer the concise answer.
+            </MessageResponse>
           </MessageContent>
           <MessageContent key="b">
             <MessageResponse>
@@ -118,14 +127,16 @@ export const Thread: Story = {
     <div className="flex flex-col gap-8">
       <Message from="user">
         <MessageContent>
-          <MessageResponse>Summarize atomic design in one sentence.</MessageResponse>
+          <MessageResponse>
+            Summarize atomic design in one sentence.
+          </MessageResponse>
         </MessageContent>
       </Message>
       <Message from="assistant">
         <MessageContent>
           <MessageResponse>
-            Atomic design builds UIs from atoms into molecules, organisms, templates, and
-            pages.
+            Atomic design builds UIs from atoms into molecules, organisms,
+            templates, and pages.
           </MessageResponse>
         </MessageContent>
       </Message>

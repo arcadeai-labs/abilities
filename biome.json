@@ -41,7 +41,8 @@
       "!**/pgdata",
       "!**/coverage",
       "!**/routeTree.gen.ts",
-      "!**/pnpm-lock.yaml"
+      "!**/pnpm-lock.yaml",
+      "!**/storybook-static"
     ]
   },
   "overrides": [

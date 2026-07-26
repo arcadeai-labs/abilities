@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite"
-
-import { DirectionProvider } from "./direction"
 import { Button } from "./button"
+import { DirectionProvider } from "./direction"
 
 const meta = {
   title: "atoms/Direction",

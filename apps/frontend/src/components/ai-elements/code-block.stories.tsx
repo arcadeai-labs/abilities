@@ -53,9 +53,7 @@ export const Default: Story = {
 }
 
 export const WithLineNumbers: Story = {
-  render: () => (
-    <CodeBlock code={tsExample} language="tsx" showLineNumbers />
-  ),
+  render: () => <CodeBlock code={tsExample} language="tsx" showLineNumbers />,
 }
 
 export const WithHeader: Story = {
@@ -103,7 +101,11 @@ export const WithLanguageSelector: Story = {
           </CodeBlockTitle>
           <CodeBlockActions>
             <CodeBlockLanguageSelector
-              onValueChange={(value) => setLanguage(value as "tsx" | "json")}
+              onValueChange={(value) => {
+                if (value === "tsx" || value === "json") {
+                  setLanguage(value)
+                }
+              }}
               value={language}
             >
               <CodeBlockLanguageSelectorTrigger>
