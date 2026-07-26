@@ -8,6 +8,7 @@ import { coverage, loadCatalog } from "./catalog"
 import { generateTypes } from "./codegen"
 import { db } from "./db"
 import { revalidateAll, runScript, upsertScript } from "./execute"
+import { createMcpHandler } from "./mcp"
 import { openApiDocument } from "./openapi"
 import { type ScriptRow, scripts, tools } from "./schema"
 import {
@@ -539,9 +540,23 @@ const present = async (row: ScriptRow) =>
  *
  * `routes` stays unprefixed so the RPC client's base URL carries the `/api` —
  * `createClient("/api").tools.$get()` rather than `client.api.tools.$get()`.
+ *
+ * `/api/mcp` sits beside `/api/openapi` and `/api/scalar` for the same reason they
+ * are here rather than on `routes`: it is a protocol endpoint, not a REST resource,
+ * so it belongs in neither the generated document nor the RPC client's type. That
+ * it carries no `describeRoute` is what keeps it out of the document — and therefore
+ * what stops the MCP bridge from generating a tool for itself.
+ *
+ * `mcp` and `document` are declared below and referenced lazily: a handler body only
+ * runs once a request arrives, by which time both are assigned. That keeps every
+ * route on one chain.
  */
 export const app = new Hono()
   .route("/api", routes)
+  .post("/api/mcp", (c) => mcp(c))
+  // Stateless, so there is no standalone SSE stream to open. 405 is what the spec
+  // asks for, and beats Hono's 404 for a method that exists in the protocol.
+  .get("/api/mcp", (c) => c.newResponse(null, 405))
   .get("/api/openapi", async (c) => c.json(await document()))
   .get(
     "/api/scalar",
@@ -568,6 +583,20 @@ const document = openApiDocument(app, {
       },
     ],
   },
+})
+
+/**
+ * Every operation in the document above is an MCP tool, exposed verbatim — the tool
+ * list is a pure function of the document, so there is nothing to keep in sync and
+ * no per-route registration to forget. Dispatch is in-process through `app.request`,
+ * the same thing the frontend is told to do instead of making the server talk to
+ * itself over HTTP.
+ */
+const mcp = createMcpHandler({
+  // `async` because `app.request` is synchronous for a synchronous handler and
+  // returns a bare Response.
+  dispatch: async (path, init) => app.request(path, init),
+  document,
 })
 
 /** The type the RPC client is built from. */

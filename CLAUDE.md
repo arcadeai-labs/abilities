@@ -265,6 +265,74 @@ and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
   OpenAPI-generated `*Api` tools are 0%. `GET /api/coverage` is the list, and the
   fix is upstream in the toolkit definitions rather than schema inference here.
 
+## MCP (`packages/api/src/mcp.ts`)
+
+`POST /api/mcp` is an MCP server over streamable HTTP, and **every operation in the
+OpenAPI document is a tool** — so a route that exists is a tool that exists and
+adding an endpoint needs no work here. The audience is an agent *authoring* scripts:
+the `GET /api/types` → `POST /api/validate` → `PUT /api/scripts/:name` →
+`POST /api/scripts/:name/run` loop is already a tool-use loop, and this hands it
+over with `describeRoute`'s prose as the instructions.
+
+- The document is the interface. `hono-openapi` derives `operationId` from the method
+  and path (`getApiTools`, `postApiScriptsByNameRun`), so tool names come free and
+  stay stable. Nothing is hand-registered per route.
+- `/api/mcp` sits on `app` beside `/api/openapi` and `/api/scalar`, not on `routes`:
+  it is a protocol endpoint, so it belongs in neither the document nor the RPC
+  client's type. Carrying no `describeRoute` is what keeps it out of the document —
+  and therefore what stops the bridge from generating a tool for itself.
+- Dispatch is **in-process** via `app.request`. The bridge never talks to its own
+  HTTP port, for the same reason `src/lib/api.ts` gives, and no server need be
+  listening. A separate MCP process importing `@repo/api` would be a second PGlite
+  opener, which is the corruption described above — don't.
+- **One transformation.** MCP hands a tool a single flat `arguments` object; an HTTP
+  operation splits its inputs across path, query and body. `plan` flattens the three
+  and remembers where each argument came from so `rebuild` can put it back. Flat
+  because a model fills a flat object reliably and a nested one badly — and a name
+  arriving in two places throws at startup rather than silently routing a value to
+  the wrong slot.
+- **Verbatim, and that is the point.** Every input the document declares is
+  advertised and nothing else is — no field stripped, defaulted or injected — so a
+  tool's parameters are exactly its operation's and what you read in `/api/scalar` is
+  what you pass to the tool. The tool list is a pure function of the document, which
+  is what makes the surface auditable and what makes a new route need no work here.
+  `src/mcp.test.ts` asserts this over every operation, not a sample.
+- That includes **`userId` on `postApiScriptsByNameRun`**, which the caller supplies
+  like any other parameter, because `RunRequestSchema` declares it. So identity is
+  whatever the caller says it is: fine for a single-user tool on `localhost`, and the
+  thing auth replaces. Nothing derives it, and no env var configures it — an earlier
+  draft injected `ARCADE_USER_ID`, which bought little and cost a name-keyed exception
+  that would silently capture any future field called `userId`. When auth arrives, the
+  seam is `createMcpHandler`: give it a way to resolve the caller and drop `userId`
+  from the advertised schema then, deliberately, rather than carrying a special case
+  in anticipation.
+  (`ARCADE_USER_ID` is still read, with fallbacks, by `smoke.ts` and `src/testing.ts`
+  — unrelated to the bridge.)
+- Stateless: no session id, a fresh `Server` and transport per POST, nothing to
+  garbage-collect. A module-level transport registry is the hazard that already
+  forced `src/db.ts` onto `globalThis`, since Vite re-evaluates on every edit.
+  `enableJsonResponse` keeps replies plain JSON rather than SSE; streaming a run's
+  `logs` as they happen is the reason to revisit that, and `tools/list_changed` is
+  what going stateful would buy. GET returns 405, since there is no standalone
+  stream to open.
+- **Results are capped at 64 KB.** Not a nicety: `getApiTypes` over the whole catalog
+  is 8.6 MB, and a response that evicts the conversation it was fetched for is worse
+  than an error because it looks like success. The cap says how to ask for less.
+- A failing route is `isError: true` in the *result*, never a thrown JSON-RPC error —
+  the model has to read the failure and correct itself, and the routes already return
+  structured ones (`input_invalid` with violations, `authorization_required` with auth
+  URLs). Only an unadvertised tool name is a protocol error.
+- OpenAPI cannot express MCP's behavioural hints, so `readOnlyHint` is derived from
+  the method and the rest live in `ANNOTATIONS`. Omitting `destructiveHint` leaves
+  MCP's default of `true`, which is the right reading for `postApiScriptsByNameRun`,
+  whose effect depends entirely on the script.
+- A `$ref` reaching an input schema would dangle, because `hoistDefs` puts named
+  schemas in `components.schemas` and an MCP client never sees those. Only responses
+  carry refs today; `build` throws if that changes.
+- `src/mcp.test.ts` covers the bridge, not the routes behind it, so it needs no
+  Arcade key. The load-bearing case is the tool count matching the document's
+  operation count — that is the assertion "every endpoint is a tool" rests on.
+
 ## Frontend (`apps/frontend`)
 
 - Vite + TanStack Start. File-based routes in `src/routes`; `src/routeTree.gen.ts`
@@ -278,6 +346,9 @@ and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
   `ssr.external` keeps PGlite a plain Node import, since it ships WASM. PGlite is
   therefore also a direct dependency here — the built server imports it by name
   from `dist/server`, which only resolves against this app's `node_modules`.
+  `@modelcontextprotocol/sdk` gets the same treatment for the same reason: it is
+  Node-targeted and pulls in express and ajv, so it stays external and is a direct
+  dependency here too.
 - `src/lib/api.ts` is the browser RPC client, based at `/api`. A relative base has
   nothing to resolve against during SSR: to load data on the server, call the app
   in-process from a `createServerFn` (`app.request("/tools")`) instead of making

@@ -56,9 +56,11 @@ const config = defineConfig({
   resolve: { tsconfigPaths: true },
   ssr: {
     // @repo/api is TypeScript source, so Vite has to transform it rather than hand
-    // it to Node. PGlite ships WASM and stays a plain Node import.
+    // it to Node. PGlite ships WASM and stays a plain Node import; the MCP SDK is
+    // Node-targeted and pulls in express and ajv, so it gets the same treatment
+    // rather than being dragged through the SSR bundle.
     noExternal: ["@repo/api"],
-    external: ["@electric-sql/pglite"],
+    external: ["@electric-sql/pglite", "@modelcontextprotocol/sdk"],
   },
   plugins: [
     rootEnv(),

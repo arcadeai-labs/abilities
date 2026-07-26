@@ -27,8 +27,10 @@
   "dependencies": {
     "@arcadeai/arcadejs": "^2.4.1",
     "@electric-sql/pglite": "^0.5.4",
+    "@hono/mcp": "^0.3.1",
     "@hono/standard-validator": "^0.3.0",
     "@jitl/quickjs-singlefile-cjs-release-sync": "0.32.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@scalar/hono-api-reference": "^0.11.11",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.32",
