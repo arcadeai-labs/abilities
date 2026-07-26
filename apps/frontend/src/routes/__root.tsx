@@ -2,6 +2,7 @@ import { TanStackDevtools } from "@tanstack/react-devtools"
 import { createRootRoute, HeadContent, Scripts } from "@tanstack/react-router"
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools"
 
+import { Providers } from "@/components/providers"
 import appCss from "../styles.css?url"
 
 export const Route = createRootRoute({
@@ -15,7 +16,7 @@ export const Route = createRootRoute({
         content: "width=device-width, initial-scale=1",
       },
       {
-        title: "TanStack Start Starter",
+        title: "Scripts",
       },
     ],
     links: [
@@ -26,7 +27,7 @@ export const Route = createRootRoute({
     ],
   }),
   notFoundComponent: () => (
-    <main className="container mx-auto p-4 pt-16">
+    <main>
       <h1>404</h1>
       <p>The requested page could not be found.</p>
     </main>
@@ -41,18 +42,20 @@ function RootDocument({ children }: { children: React.ReactNode }) {
         <HeadContent />
       </head>
       <body>
-        {children}
-        <TanStackDevtools
-          config={{
-            position: "bottom-right",
-          }}
-          plugins={[
-            {
-              name: "Tanstack Router",
-              render: <TanStackRouterDevtoolsPanel />,
-            },
-          ]}
-        />
+        <Providers>
+          {children}
+          <TanStackDevtools
+            config={{
+              position: "bottom-right",
+            }}
+            plugins={[
+              {
+                name: "Tanstack Router",
+                render: <TanStackRouterDevtoolsPanel />,
+              },
+            ]}
+          />
+        </Providers>
         <Scripts />
       </body>
     </html>
