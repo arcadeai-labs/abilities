@@ -23,6 +23,15 @@ export type ScriptParams = {
   input: JsonSchema;
   /** JSON Schema the return value must satisfy. */
   output: JsonSchema;
+  /**
+   * Toolkits to put in scope, by namespace: `["gmail", "linear"]`.
+   *
+   * This is what `run`'s context object contains, and what codegen emits types
+   * for. It is *not* the capability grant — which tools the script may actually
+   * call, and therefore which OAuth scopes get requested, still follows from the
+   * `toolkit.method(...)` calls it makes.
+   */
+  toolkits?: string[];
   /** `async run(input, { github, log }) { … }` */
   run: string;
 };

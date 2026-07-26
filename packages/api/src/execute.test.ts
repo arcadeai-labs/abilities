@@ -48,6 +48,7 @@ describe("storing", () => {
       params: {
         input: { type: "object", properties: {} },
         output: { type: "object", properties: { sum: { type: "number" } }, required: ["sum"] },
+        toolkits: ["math"],
         run: `async run(input, { math }) {
   return { sum: await math.add({ a: "1", b: "2" }) };
 }`,
@@ -66,6 +67,7 @@ describe("storing", () => {
     const script = await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   return { sum: await math.add({ a: "1", b: "2" }) };
 }`,
@@ -79,6 +81,7 @@ describe("storing", () => {
     await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   return { sum: await math.add({ a: "4", b: "4" }) };
 }`,
@@ -96,6 +99,7 @@ describe("addressing", () => {
     const script = await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   return { sum: await math.add({ a: "1", b: "1" }) };
 }`,
@@ -137,6 +141,7 @@ describe("running", () => {
         properties: { sum: { type: "string" }, doubled: { type: "string" } },
         required: ["sum", "doubled"],
       },
+      toolkits: ["math"],
       run: `async run(input, { math, log }) {
   const sum = await math.add({ a: input.a, b: input.b });
   log("sum is", sum);
@@ -162,6 +167,7 @@ describe("running", () => {
     const script = await store({
       input: { type: "object", properties: { a: { type: "string" } }, required: ["a"] },
       output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   return { sum: await math.add({ a: input.a, b: "1" }) };
 }`,
@@ -182,6 +188,7 @@ describe("running", () => {
     const script = await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { total: { type: "integer" } }, required: ["total"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   const total = await math.sumList({ numbers: ["1", "2", "3.5"] });
   return { total: Number(total) };
@@ -204,6 +211,7 @@ describe("running", () => {
     const script = await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   const sum = z.string().parse(await math.add({ a: "2", b: "3" }));
   return { sum };
@@ -221,6 +229,7 @@ describe("running", () => {
     const script = await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { sum: { type: "number" } }, required: ["sum"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   const sum = z.number().parse(await math.add({ a: "2", b: "3" }));
   return { sum };
@@ -239,6 +248,7 @@ describe("running", () => {
     const script = await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { quotient: { type: "string" } }, required: ["quotient"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   return { quotient: await math.divide({ a: "1", b: "0" }) };
 }`,
@@ -254,6 +264,7 @@ describe("running", () => {
     const script = await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { login: { type: "string" } }, required: ["login"] },
+      toolkits: ["github"],
       run: `async run(input, { github }) {
   const me = await github.whoAmI({});
   return { login: me.profile?.login ?? "unknown" };
@@ -274,6 +285,7 @@ describe("running", () => {
     const script = await store({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      toolkits: ["math"],
       run: `async run(input, { math }) {
   return { sum: await math.add({ a: "1", b: "1" }) };
 }`,

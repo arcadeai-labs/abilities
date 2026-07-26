@@ -43,6 +43,7 @@ const PARAMS = {
     properties: { sum: { type: "string" }, doubled: { type: "string" } },
     required: ["sum", "doubled"],
   },
+  toolkits: ["math"],
   run: `async run(input, { math, log }) {
   const sum = await math.add({ a: input.a, b: input.b });
   log("sum is", sum);

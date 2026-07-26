@@ -7,6 +7,11 @@
  * Types are erased and the checker can be lied to, so the grant is never taken
  * from a type — it comes from the shape of the code, and the rules below exist to
  * keep that shape unambiguous.
+ *
+ * Which *toolkits* are in scope is declared in the request body and passed in as
+ * `declared`. Which *tools* within them the script may call is what this derives,
+ * and that distinction is what keeps least privilege: a script that names `gmail`
+ * and only calls `listEmails` is authorized for `gmail.readonly`, not for send.
  */
 
 import ts from "typescript";
@@ -50,7 +55,7 @@ const FORBIDDEN_IDENTIFIERS = new Map([
   ["WebAssembly", "policy/no-webassembly"],
 ]);
 
-export function checkPolicy(file: ts.SourceFile): PolicyResult {
+export function checkPolicy(file: ts.SourceFile, declared: ReadonlySet<string>): PolicyResult {
   const diagnostics: Diagnostic[] = [];
   const namespaces: string[] = [];
   const paths = new Set<string>();
@@ -170,6 +175,10 @@ export function checkPolicy(file: ts.SourceFile): PolicyResult {
           continue;
         }
         if (RESERVED_CTX_KEYS.has(source.text)) continue;
+        // Anything not declared in the request body is not a toolkit binding. The
+        // context type has no such property either, so the checker reports it —
+        // treating it as a toolkit here would only produce a second, worse message.
+        if (!declared.has(source.text)) continue;
         if (!ts.isIdentifier(element.name)) {
           report(
             element,

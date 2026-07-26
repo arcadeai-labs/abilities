@@ -25,6 +25,7 @@ const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice
 export const paramsOf = (row: ScriptRow): ScriptParams => ({
   input: row.inputSchema as ScriptParams["input"],
   output: row.outputSchema as ScriptParams["output"],
+  toolkits: row.toolkits,
   run: row.run,
 });
 
@@ -56,6 +57,7 @@ export async function upsertScript(input: {
     run: input.params.run,
     inputSchema: input.params.input,
     outputSchema: input.params.output,
+    toolkits: input.params.toolkits ?? [],
     compiled: compileScript(validation.source),
     toolGrant: validation.grant,
     snapshotId: validation.snapshotId,

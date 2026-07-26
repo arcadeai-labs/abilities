@@ -129,7 +129,7 @@ export const ValidationSchema = z
     ok: z.boolean(),
     snapshotId: z.string().describe("The catalog snapshot this was checked against."),
     diagnostics: z.array(DiagnosticSchema),
-    namespaces: z.array(z.string()).describe("Toolkits the script destructured."),
+    toolkits: z.array(z.string()).describe("Toolkits put in scope, as declared."),
     grant: z
       .record(z.string(), z.string())
       .describe("`github.getIssue` to `Github.GetIssue` — every tool this script may call."),
@@ -154,6 +154,14 @@ export const ScriptParamsSchema = z
   .object({
     input: JsonSchemaSchema.describe("Shape of the value `run` receives."),
     output: JsonSchemaSchema.describe("Shape the return value must satisfy."),
+    toolkits: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "Toolkits to put in scope, by namespace — `[\"gmail\", \"linear\"]`. These become the " +
+          "properties of `run`'s context object. Which tools within them the script may call, " +
+          "and therefore which OAuth scopes are requested, follows from the calls it makes.",
+      ),
     run: z
       .string()
       .describe(
@@ -179,7 +187,7 @@ export const ScriptSchema = z
     grant: z
       .record(z.string(), z.string())
       .describe("`github.getIssue` to `Github.GetIssue` — every tool this script may call."),
-    namespaces: z.array(z.string()).describe("Toolkits the grant touches; derived from its keys."),
+    toolkits: z.array(z.string()).describe("Toolkits put in scope, as submitted."),
     snapshotId: z.string(),
     stale: z.boolean().describe("True when the catalog moved on since this was validated."),
     createdAt: z.string(),

@@ -179,12 +179,23 @@ and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
   everything present, so a per-request map would hand the same tool different
   identifiers depending on the filter, and stored grants would drift. All 8196
   tools across 123 toolkits currently map without a single collision.
-- **A script's capability grant comes from syntax, never from a type.** It is the
-  destructured second parameter of `run`, plus the `toolkit.method(...)` calls made
-  through those bindings. `src/policy.ts` enforces the rules that keep that
-  extraction sound — a toolkit binding may *only* be the object of a direct method
-  call, so aliasing, computed access and passing it around are all errors. Relax
-  those and the grant stops meaning anything.
+- **Two different things, deliberately kept apart.** The request body's `toolkits`
+  says which toolkits are *in scope* — it scopes codegen and becomes the properties
+  of `run`'s context. The **grant** is which tools the script may actually call, and
+  that still comes from syntax: the `toolkit.method(...)` calls it makes.
+  `src/policy.ts` enforces the rules that keep that extraction sound — a toolkit
+  binding may *only* be the object of a direct method call, so aliasing, computed
+  access and passing it around are all errors. Relax those and the grant stops
+  meaning anything.
+- Granting per toolkit instead would cost least privilege, and measurably: Gmail's
+  30 tools span 7 distinct OAuth scopes, so `toolkits: ["gmail"]` alone would have
+  to request read *and* send *and* compose for a script that only lists. Deriving
+  the grant from the calls means a script that only calls `gmail.listEmails` is
+  authorized for `gmail.readonly` and nothing else. That is what "scopes are
+  implicit" buys — nobody declares a scope, and nobody over-grants either.
+- The body and the code cannot disagree: the context type has exactly the declared
+  toolkits, so destructuring an undeclared one is a type error, and declaring one
+  that is never called is a `contract/unused-toolkit` warning.
 - Scripts may **annotate with types but not declare them** (no type aliases,
   interfaces, conditional or mapped types). This isn't style: the checker runs in
   our process on untrusted input, and recursive type computation is a compile bomb.

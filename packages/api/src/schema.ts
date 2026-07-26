@@ -62,6 +62,13 @@ export const scripts = pgTable("scripts", {
   /** JSON Schema the return value must satisfy, exactly as submitted. */
   outputSchema: jsonb("output_schema").$type<unknown>().notNull(),
   /**
+   * Toolkits put in scope for `run`, as submitted: `["gmail", "linear"]`.
+   *
+   * Not the capability grant. This is the surface the script was written against;
+   * `toolGrant` is what it may actually call, and therefore what gets authorized.
+   */
+  toolkits: jsonb("toolkits").$type<string[]>().notNull().default([]),
+  /**
    * Type-erased source, ready for the sandbox.
    *
    * Derived from the columns above, but stored rather than rebuilt per run: this is

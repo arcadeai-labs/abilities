@@ -25,6 +25,7 @@ const OK_OUTPUT: JsonSchema = {
 const script = (body: string, over: Partial<ScriptParams> = {}): ScriptParams => ({
   input: { type: "object", properties: {} },
   output: OK_OUTPUT,
+  toolkits: ["github", "slack"],
   run: `async run(input, { github, slack, log }) {\n${body}\n  return { ok: true };\n}`,
   ...over,
 });
@@ -44,6 +45,7 @@ describe("accepts", () => {
         properties: { escalated: { type: "boolean" }, title: { type: "string" } },
         required: ["escalated", "title"],
       },
+      toolkits: ["github", "slack"],
       run: `async run(input, { github, slack, log }) {
   const issue = await github.getIssue({
     owner: input.owner, repo: input.repo, issue_number: input.issue,
@@ -86,6 +88,7 @@ describe("accepts", () => {
     const result = await validateScript({
       input: { type: "object", properties: { channel: { type: "string" } }, required: ["channel"] },
       output: { type: "object", properties: { sentTo: { type: "string" } }, required: ["sentTo"] },
+      toolkits: ["slack"],
       run: `async run(input, { slack }) {
   const raw = await slack.sendMessage({ channel_name: input.channel, message: "hi" });
   const sent = z.object({ channel: z.string() }).parse(raw);
@@ -101,6 +104,7 @@ describe("accepts", () => {
     const result = await validateScript({
       input: { type: "object", properties: {} },
       output: { type: "object", properties: { sentTo: { type: "string" } }, required: ["sentTo"] },
+      toolkits: ["slack"],
       run: `async run(input, { slack }) {
   const sent = await slack.sendMessage({ channel_name: "#c", message: "hi" });
   return { sentTo: sent.channel };
@@ -154,6 +158,7 @@ describe("rejects", () => {
         required: ["owner", "repo", "issue"],
       },
       output: { type: "object", properties: { title: { type: "string" } }, required: ["title"] },
+      toolkits: ["github"],
       run: `async run(input, { github }) {
   const issue = await github.getIssue({
     owner: input.owner, repo: input.repo, issue_number: input.issue,
@@ -190,6 +195,7 @@ describe("rejects", () => {
     const result = await validateScript({
       input: { type: "object", properties: {} },
       output: OK_OUTPUT,
+      toolkits: ["slack"],
       run: `async run(input, { slack }) {
   await github.whoAmI({});
   return { ok: true };
@@ -229,6 +235,7 @@ describe("rejects", () => {
     const result = await validateScript({
       input: { type: "object", properties: {} },
       output: OK_OUTPUT,
+      toolkits: ["...everything"],
       run: `async run(input, { ...everything }) {\n  return { ok: true };\n}`,
     });
 
@@ -240,6 +247,7 @@ describe("rejects", () => {
     const result = await validateScript({
       input: { type: "object", properties: {} },
       output: OK_OUTPUT,
+      toolkits: [],
       run: `async run(input, { log }) {\n  return { ok: true };\n}\n}\nimport { readFileSync } from "node:fs";\n;(() => {`,
     });
 
@@ -253,6 +261,7 @@ describe("rejects", () => {
     const result = await validateScript({
       input: { type: "object", properties: {} },
       output: OK_OUTPUT,
+      toolkits: [],
       run: `async run(input, { log }) { return { ok: true }; }\n});\nconst leaked = 1;\ndefineScript({`,
     });
 
@@ -308,11 +317,12 @@ describe("rejects", () => {
     const result = await validateScript({
       input: { type: "object", properties: {} },
       output: OK_OUTPUT,
+      toolkits: ["githbu"],
       run: `async run(input, { githbu }) {\n  return { ok: true };\n}`,
     });
 
     expect(result.ok).toBe(false);
-    const diagnostic = result.diagnostics.find((d) => d.code === "policy/unknown-toolkit");
+    const diagnostic = result.diagnostics.find((d) => d.code === "contract/unknown-toolkit");
     expect(diagnostic?.message).toContain("github");
   });
 
@@ -334,12 +344,38 @@ describe("rejects", () => {
 });
 
 describe("warns", () => {
-  it("about a toolkit destructured but never called", async () => {
-    // It grants nothing, and the namespace list is derived from the grant, so the
-    // binding would otherwise disappear without comment.
+  it("about a declared toolkit the script never calls", async () => {
+    // The guest's tool surface is built from `grant`, not from this list, so a
+    // declaration with no matching call grants nothing and should say so.
     const result = await validateScript(script(`  log("hi");`));
 
     expect(result.ok).toBe(true);
-    expect(codes(result.diagnostics)).toContain("policy/unused-toolkit");
+    expect(codes(result.diagnostics)).toContain("contract/unused-toolkit");
+  });
+
+  it("does not warn about a toolkit that is declared and used", async () => {
+    const result = await validateScript({
+      input: { type: "object", properties: {} },
+      output: OK_OUTPUT,
+      toolkits: ["github"],
+      run: `async run(input, { github }) {\n  await github.whoAmI({});\n  return { ok: true };\n}`,
+    });
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects destructuring a toolkit the body did not declare", async () => {
+    // The context type only has the declared toolkits, so the checker catches it —
+    // the body and the code cannot disagree about what is in scope.
+    const result = await validateScript({
+      input: { type: "object", properties: {} },
+      output: OK_OUTPUT,
+      toolkits: ["github"],
+      run: `async run(input, { github, slack }) {\n  await github.whoAmI({});\n  return { ok: true };\n}`,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(codes(result.diagnostics)).toContain("TS2339");
   });
 });

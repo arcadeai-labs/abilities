@@ -46,7 +46,7 @@ export type ValidationResult = {
   ok: boolean;
   snapshotId: string;
   diagnostics: Diagnostic[];
-  /** Toolkit namespaces the script destructured. */
+  /** Toolkits put in scope, as declared in the request body. */
   namespaces: string[];
   /**
    * `github.getIssue` → `Github.GetIssue`. The capability grant: which tools the
@@ -199,31 +199,41 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
     };
   }
 
-  // ── 2. shape and policy ──────────────────────────────────────────────────
-  const structural = checkAssembly(file);
-  const policy = checkPolicy(file);
-  const raw: Diagnostic[] = [...structural, ...policy.diagnostics];
-
+  // ── 2. the declared toolkits ─────────────────────────────────────────────
+  // These come from the request body, not from the code, so codegen no longer
+  // needs a parse to know what to emit. What the script may *call* within them is
+  // still read off the source below.
   const known = new Set(catalog.nameMap.namespaces.keys());
-  const namespaces = policy.namespaces.filter((namespace) => {
-    if (known.has(namespace)) return true;
+  const raw: Diagnostic[] = [];
+  const namespaces: string[] = [];
+
+  for (const namespace of new Set(params.toolkits ?? [])) {
+    if (known.has(namespace)) {
+      namespaces.push(namespace);
+      continue;
+    }
     const suggestion = closest(namespace, known);
     raw.push({
-      category: "policy",
-      code: "policy/unknown-toolkit",
+      category: "contract",
+      code: "contract/unknown-toolkit",
       severity: "error",
-      message: `No toolkit \`${namespace}\` in this catalog snapshot.${suggestion ? ` Did you mean \`${suggestion}\`?` : ""}`,
-      start: point(runLineOffset + 1, 1),
-      end: point(runLineOffset + 1, 1),
+      message: `\`toolkits\` names \`${namespace}\`, which is not in this catalog snapshot.${suggestion ? ` Did you mean \`${suggestion}\`?` : ""}`,
+      start: point(1, 1),
+      end: point(1, 1),
     });
-    return false;
-  });
+  }
+  namespaces.sort();
 
-  // ── 3. types for exactly those toolkits ──────────────────────────────────
+  // ── 3. shape and policy ──────────────────────────────────────────────────
+  const structural = checkAssembly(file);
+  const policy = checkPolicy(file, new Set(namespaces));
+  raw.push(...structural, ...policy.diagnostics);
+
+  // ── 4. types for exactly those toolkits ──────────────────────────────────
   const scoped = namespaces.flatMap((namespace) => catalog.byNamespace.get(namespace) ?? []);
   const generated = generateTypes(scoped, catalog.nameMap);
 
-  // ── 4. the type check ────────────────────────────────────────────────────
+  // ── 5. the type check ────────────────────────────────────────────────────
   const files = new Map([
     [SCRIPT_PATH, source],
     [TYPES_PATH, generated.source],
@@ -274,16 +284,16 @@ export async function validateScript(params: ScriptParams): Promise<ValidationRe
     });
   }
 
-  // A toolkit can be destructured and never called. It grants nothing — the guest's
-  // tool surface is built from `grant`, so the binding is dead — and the namespace
-  // list is derived from the grant, so it would otherwise vanish without comment.
+  // A declared toolkit that is never called grants nothing — the guest's tool
+  // surface is built from `grant`, not from this list — so say so rather than
+  // leaving a declaration that looks like it does something.
   for (const namespace of namespaces) {
     if (Object.keys(grant).some((path) => path.startsWith(`${namespace}.`))) continue;
     diagnostics.push({
-      category: "policy",
-      code: "policy/unused-toolkit",
+      category: "contract",
+      code: "contract/unused-toolkit",
       severity: "warning",
-      message: `\`${namespace}\` is destructured but never called, so it grants nothing.`,
+      message: `\`toolkits\` names \`${namespace}\`, but no \`${namespace}.…\` call is made, so it grants nothing.`,
       start: point(1, 1),
       end: point(1, 1),
     });

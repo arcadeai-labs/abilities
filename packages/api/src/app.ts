@@ -216,7 +216,10 @@ export const routes = new Hono()
     }),
     validator("json", ScriptParamsSchema),
     async (c) => {
-      const { contract: _contract, ...result } = await validateScript(c.req.valid("json") as never);
+      const { contract: _contract, namespaces, ...rest } = await validateScript(
+        c.req.valid("json") as never,
+      );
+      const result = { ...rest, toolkits: namespaces };
       // `source` rides along: it is the module that was checked, and the only place
       // to see it — a stored script keeps its parts, not the assembly.
       return c.json(result, 200);
@@ -322,7 +325,7 @@ export const routes = new Hono()
       if (!row) return c.json({ error: "not_found", message: "No such script." }, 404);
 
       const catalog = await loadCatalog();
-      const scoped = namespacesOf(row).flatMap((ns) => catalog.byNamespace.get(ns) ?? []);
+      const scoped = row.toolkits.flatMap((ns) => catalog.byNamespace.get(ns) ?? []);
       c.header("Content-Type", "text/plain; charset=utf-8");
       c.header("X-Catalog-Snapshot", catalog.snapshotId);
       return c.body(generateTypes(scoped, catalog.nameMap).source, 200);
@@ -401,11 +404,6 @@ export const routes = new Hono()
     async (c) => c.json(await revalidateAll(), 200),
   );
 
-/** The toolkits a grant touches — `github.getIssue` contributes `github`. */
-const namespacesOf = (row: ScriptRow): string[] => [
-  ...new Set(Object.keys(row.toolGrant).map((path) => path.split(".")[0]!)),
-].sort();
-
 /** Scripts are addressed by name; `id` stays internal, for run records to point at. */
 /**
  * A script is addressed by name, but `id` is what run records carry and what the
@@ -432,7 +430,7 @@ function describeScript(row: ScriptRow, snapshotId: string) {
     output: row.outputSchema,
     version: row.version,
     grant: row.toolGrant,
-    namespaces: namespacesOf(row),
+    toolkits: row.toolkits,
     snapshotId: row.snapshotId,
     stale: row.snapshotId !== snapshotId,
     createdAt: row.createdAt.toISOString(),
