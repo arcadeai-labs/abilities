@@ -128,6 +128,40 @@ describe("addressing", () => {
   });
 });
 
+describe("the run request", () => {
+  it("accepts a body with no `input` for a script that takes none", async () => {
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      toolkits: ["math"],
+      run: `async run(input, { math }) {
+  return { sum: await math.add({ a: "1", b: "1" }) };
+}`,
+    });
+
+    const response = await app.request(`/api/scripts/${script.name}/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: TEST_USER }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ outcome: { kind: "ok", output: { sum: "2" } } });
+  });
+
+  it("says what is missing when the body is empty, rather than blaming the JSON", async () => {
+    const response = await app.request("/api/scripts/anything/run", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    });
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: { path?: string[] }[] };
+    // Not "Malformed JSON in request body" — an absent body has no syntax to blame.
+    expect(body.error?.[0]?.path).toEqual(["userId"]);
+  });
+});
+
 describe("running", () => {
   it("executes against the real API and persists the run", async () => {
     const script = await store({

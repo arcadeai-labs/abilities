@@ -201,7 +201,18 @@ export const ScriptsResponseSchema = z
 
 export const RunRequestSchema = z
   .object({
-    input: z.unknown().describe("Validated against the script's declared `input` schema."),
+    /**
+     * Left untyped on purpose — the real shape is the script's own declared `input`,
+     * which this is validated against. Optional so a script that takes nothing can
+     * be run with just a `userId`, and given an example so tooling has something to
+     * put in the box: an untyped *required* property is one a generated client
+     * cannot fill, which ends up sending no body at all.
+     */
+    input: z
+      .unknown()
+      .optional()
+      .meta({ examples: [{}] })
+      .describe("Validated against the script's declared `input` schema. Defaults to `{}`."),
     userId: z
       .string()
       .min(1)

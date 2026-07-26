@@ -1,6 +1,7 @@
 import { Scalar } from "@scalar/hono-api-reference";
 import { asc, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
+import { createMiddleware } from "hono/factory";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { z } from "zod";
 import { coverage, loadCatalog } from "./catalog";
@@ -44,10 +45,33 @@ const json =(schema: Parameters<typeof resolver>[0], description: string) => ({
 });
 
 /**
+ * Treat an absent JSON body as `{}` so validation can say what is actually missing.
+ *
+ * Hono rejects an empty body with "Malformed JSON in request body", which sends you
+ * looking for a syntax error in a request that has no syntax. Substituting an empty
+ * object gets the real answer instead — `userId: expected string, received
+ * undefined` — and cannot mask a genuine parse error, because a non-empty body is
+ * still parsed normally.
+ */
+const emptyBodyIsEmptyObject = createMiddleware(async (c, next) => {
+  const isJson = c.req.header("content-type")?.includes("application/json");
+  if (isJson && (await c.req.raw.clone().text()).trim() === "") {
+    // Built from primitives rather than `new Request(c.req.raw, …)`: undici rejects
+    // re-wrapping one of its own Requests with "Cannot read private member #state".
+    c.req.raw = new Request(c.req.url, {
+      method: c.req.method,
+      headers: c.req.raw.headers,
+      body: "{}",
+    });
+  }
+  await next();
+});
+
+/**
  * Routes are chained off a single `new Hono()` so `typeof routes` carries every
  * endpoint — that inferred type is what the RPC client consumes.
  */
-export const routes = new Hono()
+export const routes = new Hono().use(emptyBodyIsEmptyObject)
   .post(
     "/seed",
     describeRoute({
@@ -375,7 +399,7 @@ export const routes = new Hono()
       if (!script) return c.json({ error: "not_found", message: "No such script." }, 404);
 
       const { input, userId } = c.req.valid("json");
-      const report = await runScript({ script, input, userId });
+      const report = await runScript({ script, input: input ?? {}, userId });
 
       // The outcome union is the real answer; the status is a lossy summary of it.
       const status = {
