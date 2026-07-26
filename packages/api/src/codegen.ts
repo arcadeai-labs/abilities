@@ -6,38 +6,42 @@
  * compiler by `POST /api/validate`, so what you read is exactly what gets checked.
  */
 
-import { buildNameMap, type NameMap, type ToolBinding } from "./naming";
+import { buildNameMap, type NameMap, type ToolBinding } from "./naming"
 import {
   isSpecified,
   requiredKeys,
   type ToolInput,
   type ToolOutput,
   type ValueSchema,
-} from "./value-schema";
+} from "./value-schema"
 
 /** Nesting seen upstream tops out at five; the cap only guards against cycles. */
-const MAX_DEPTH = 12;
-const INDENT = "  ";
+const MAX_DEPTH = 12
+const INDENT = "  "
 
-const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
-const key = (name: string) => (IDENTIFIER.test(name) ? name : JSON.stringify(name));
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+const key = (name: string) =>
+  IDENTIFIER.test(name) ? name : JSON.stringify(name)
 
 /** Drops one indent level; the emitted declarations are no longer inside a module block. */
-const dedent = (line: string) => (line.startsWith(INDENT) ? line.slice(INDENT.length) : line);
+const dedent = (line: string) =>
+  line.startsWith(INDENT) ? line.slice(INDENT.length) : line
 
 /** Wraps in parens only when appending `[]` would otherwise bind too loosely. */
 const arrayOf = (element: string) =>
-  /[|&]/.test(element) || element.includes("\n") ? `Array<${element}>` : `${element}[]`;
+  /[|&]/.test(element) || element.includes("\n")
+    ? `Array<${element}>`
+    : `${element}[]`
 
 function docComment(text: string | undefined, indent: string): string[] {
-  if (!text?.trim()) return [];
-  const lines = text.trim().split("\n");
-  if (lines.length === 1) return [`${indent}/** ${lines[0]!.trim()} */`];
+  if (!text?.trim()) return []
+  const lines = text.trim().split("\n")
+  if (lines.length === 1) return [`${indent}/** ${lines[0]?.trim()} */`]
   return [
     `${indent}/**`,
     ...lines.map((line) => `${indent} * ${line.trim()}`),
     `${indent} */`,
-  ];
+  ]
 }
 
 /**
@@ -51,100 +55,129 @@ function emitObject(
   properties: Record<string, ValueSchema>,
   required: Set<string>,
   indent: string,
-  depth: number,
+  depth: number
 ): string {
-  const inner = indent + INDENT;
-  const lines: string[] = ["{"];
+  const inner = indent + INDENT
+  const lines: string[] = ["{"]
 
-  for (const name of Object.keys(properties).sort()) {
-    const schema = properties[name]!;
-    lines.push(...docComment(schema.description, inner));
-    const optional = required.has(name) ? "" : "?";
-    lines.push(`${inner}${key(name)}${optional}: ${emitType(schema, inner, depth + 1)};`);
+  const sorted = Object.entries(properties).sort(([a], [b]) =>
+    a < b ? -1 : a > b ? 1 : 0
+  )
+  for (const [name, schema] of sorted) {
+    lines.push(...docComment(schema.description, inner))
+    const optional = required.has(name) ? "" : "?"
+    lines.push(
+      `${inner}${key(name)}${optional}: ${emitType(schema, inner, depth + 1)};`
+    )
   }
 
-  lines.push(`${indent}}`);
-  return lines.join("\n");
+  lines.push(`${indent}}`)
+  return lines.join("\n")
 }
 
 /** One `ValueSchema` as a TypeScript type. Unspecified shapes become `unknown`. */
-export function emitType(schema: ValueSchema | undefined, indent = "", depth = 0): string {
-  if (!schema || depth > MAX_DEPTH) return "unknown";
+export function emitType(
+  schema: ValueSchema | undefined,
+  indent = "",
+  depth = 0
+): string {
+  if (!schema || depth > MAX_DEPTH) return "unknown"
 
   const base = ((): string => {
     switch (schema.val_type) {
       case "string":
         return schema.enum?.length
           ? schema.enum.map((value) => JSON.stringify(value)).join(" | ")
-          : "string";
+          : "string"
       case "integer":
       case "number":
-        return "number";
+        return "number"
       case "boolean":
-        return "boolean";
+        return "boolean"
       case "json": {
-        const properties = schema.properties;
-        if (!properties || Object.keys(properties).length === 0) return "unknown";
-        return emitObject(properties, requiredKeys(properties, schema.required_keys), indent, depth);
+        const properties = schema.properties
+        if (!properties || Object.keys(properties).length === 0)
+          return "unknown"
+        return emitObject(
+          properties,
+          requiredKeys(properties, schema.required_keys),
+          indent,
+          depth
+        )
       }
       case "array": {
         // Arrays of objects carry their element shape on `inner_properties`,
         // not `properties` — a detail the SDK's type omits entirely.
         if (schema.inner_val_type === "json") {
-          const properties = schema.inner_properties;
-          if (!properties || Object.keys(properties).length === 0) return "unknown[]";
+          const properties = schema.inner_properties
+          if (!properties || Object.keys(properties).length === 0)
+            return "unknown[]"
           return arrayOf(
             emitObject(
               properties,
               requiredKeys(properties, schema.inner_required_keys),
               indent,
-              depth,
-            ),
-          );
+              depth
+            )
+          )
         }
-        return arrayOf(emitType({ val_type: schema.inner_val_type ?? "" }, indent, depth + 1));
+        return arrayOf(
+          emitType({ val_type: schema.inner_val_type ?? "" }, indent, depth + 1)
+        )
       }
       default:
-        return "unknown";
+        return "unknown"
     }
-  })();
+  })()
 
-  return schema.nullable ? `${base} | null` : base;
+  return schema.nullable ? `${base} | null` : base
 }
 
 /** A tool's input parameters as an object type. */
-function emitInput(input: ToolInput | null | undefined, indent: string): string {
-  const parameters = input?.parameters ?? [];
-  if (parameters.length === 0) return "Record<string, never>";
+function emitInput(
+  input: ToolInput | null | undefined,
+  indent: string
+): string {
+  const parameters = input?.parameters ?? []
+  if (parameters.length === 0) return "Record<string, never>"
 
-  const inner = indent + INDENT;
-  const lines: string[] = ["{"];
-  for (const parameter of [...parameters].sort((a, b) => a.name.localeCompare(b.name))) {
-    lines.push(...docComment(parameter.description ?? parameter.value_schema?.description, inner));
-    const optional = parameter.required ? "" : "?";
-    lines.push(`${inner}${key(parameter.name)}${optional}: ${emitType(parameter.value_schema, inner, 1)};`);
+  const inner = indent + INDENT
+  const lines: string[] = ["{"]
+  for (const parameter of [...parameters].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  )) {
+    lines.push(
+      ...docComment(
+        parameter.description ?? parameter.value_schema?.description,
+        inner
+      )
+    )
+    const optional = parameter.required ? "" : "?"
+    lines.push(
+      `${inner}${key(parameter.name)}${optional}: ${emitType(parameter.value_schema, inner, 1)};`
+    )
   }
-  lines.push(`${indent}}`);
-  return lines.join("\n");
+  lines.push(`${indent}}`)
+  return lines.join("\n")
 }
 
 export type CodegenTool = {
-  name: string;
-  qualifiedName: string;
-  fullyQualifiedName: string;
-  toolkitName: string;
-  description: string | null;
-  input: ToolInput | null;
-  output: ToolOutput | null;
-};
+  name: string
+  qualifiedName: string
+  fullyQualifiedName: string
+  toolkitName: string
+  description: string | null
+  input: ToolInput | null
+  output: ToolOutput | null
+}
 
 export type GeneratedTypes = {
   /** The `arcade:runtime` declaration file. */
-  source: string;
-  nameMap: NameMap;
-  stats: { toolkits: number; tools: number; typedOutputs: number };
-  warnings: string[];
-};
+  source: string
+  nameMap: NameMap
+  stats: { toolkits: number; tools: number; typedOutputs: number }
+  warnings: string[]
+}
 
 /**
  * The parts of `arcade:runtime` that don't depend on the catalog: a Zod-shaped
@@ -155,7 +188,7 @@ export type GeneratedTypes = {
  * validator has to convert whatever the author writes into a runtime check
  * anyway — owning the surface keeps both cheap.
  */
-const PRELUDE = String.raw`  /** Built by ${"`z`"}; read back out with ${"`Infer`"}. */
+const PRELUDE = `  /** Built by ${"`z`"}; read back out with ${"`Infer`"}. */
 interface Schema<T> {
   readonly __out: T;
   /**
@@ -250,7 +283,7 @@ type ScriptConfig<I extends Schema<unknown>, O extends Schema<unknown>> = {
 declare function defineScript<I extends Schema<unknown>, O extends Schema<unknown>>(
   config: ScriptConfig<I, O>,
 ): ScriptConfig<I, O>;
-`;
+`
 
 /**
  * Renders the `arcade:runtime` module for a set of tools.
@@ -262,51 +295,65 @@ declare function defineScript<I extends Schema<unknown>, O extends Schema<unknow
  */
 export function generateTypes(
   tools: readonly CodegenTool[],
-  catalogNameMap?: NameMap,
+  catalogNameMap?: NameMap
 ): GeneratedTypes {
-  const nameMap = catalogNameMap ?? buildNameMap(tools);
-  const byQualifiedName = new Map(tools.map((tool) => [tool.qualifiedName, tool] as const));
+  const nameMap = catalogNameMap ?? buildNameMap(tools)
+  const byQualifiedName = new Map(
+    tools.map((tool) => [tool.qualifiedName, tool] as const)
+  )
 
-  let typedOutputs = 0;
-  let emittedNamespaces = 0;
-  const namespaces: string[] = [];
+  let typedOutputs = 0
+  let emittedNamespaces = 0
+  const namespaces: string[] = []
 
-  const emitMethod = (binding: ToolBinding, tool: CodegenTool, specified: boolean): string[] => {
-    const indent = INDENT.repeat(3);
-    const lines = docComment(tool.description ?? undefined, indent);
+  const emitMethod = (
+    binding: ToolBinding,
+    tool: CodegenTool,
+    specified: boolean
+  ): string[] => {
+    const indent = INDENT.repeat(3)
+    const lines = docComment(tool.description ?? undefined, indent)
     if (!specified) {
       // `unknown` is the honest default. Narrowing it is the author's call, made
       // where the value is used: `z.object({ … }).parse(result)`.
-      lines.push(`${indent}// Output undeclared upstream — narrow the result with \`z.…parse()\`.`);
+      lines.push(
+        `${indent}// Output undeclared upstream — narrow the result with \`z.…parse()\`.`
+      )
     }
-    const inputType = emitInput(tool.input, indent);
-    const outputType = emitType(tool.output?.value_schema, indent, 0);
-    lines.push(`${indent}${binding.method}(input: ${inputType}): Promise<${outputType}>;`);
-    return lines;
-  };
+    const inputType = emitInput(tool.input, indent)
+    const outputType = emitType(tool.output?.value_schema, indent, 0)
+    lines.push(
+      `${indent}${binding.method}(input: ${inputType}): Promise<${outputType}>;`
+    )
+    return lines
+  }
 
-  for (const [namespace, entry] of [...nameMap.namespaces].sort(([a], [b]) => a.localeCompare(b))) {
-    const methods: string[] = [];
+  for (const [namespace, entry] of [...nameMap.namespaces].sort(([a], [b]) =>
+    a.localeCompare(b)
+  )) {
+    const methods: string[] = []
 
-    for (const binding of [...entry.methods.values()].sort((a, b) => a.method.localeCompare(b.method))) {
-      const tool = byQualifiedName.get(binding.qualifiedName);
-      if (!tool) continue;
+    for (const binding of [...entry.methods.values()].sort((a, b) =>
+      a.method.localeCompare(b.method)
+    )) {
+      const tool = byQualifiedName.get(binding.qualifiedName)
+      if (!tool) continue
 
-      const specified = isSpecified(tool.output?.value_schema);
-      if (specified) typedOutputs++;
+      const specified = isSpecified(tool.output?.value_schema)
+      if (specified) typedOutputs++
 
-      methods.push(...emitMethod(binding, tool, specified));
+      methods.push(...emitMethod(binding, tool, specified))
     }
 
     // A filtered request only asks for some toolkits; the rest contribute nothing.
-    if (methods.length === 0) continue;
+    if (methods.length === 0) continue
 
-    emittedNamespaces++;
+    emittedNamespaces++
     namespaces.push(
       `${INDENT.repeat(2)}${key(namespace)}: {`,
       ...methods,
-      `${INDENT.repeat(2)}};`,
-    );
+      `${INDENT.repeat(2)}};`
+    )
   }
 
   // A file with no top-level import or export is a *global* declaration file, so
@@ -321,7 +368,7 @@ export function generateTypes(
     "// These declarations are ambient — a script imports nothing.",
     ...nameMap.warnings.map((warning) => `// note: ${warning}`),
     "",
-  ];
+  ]
 
   const source = [
     ...header,
@@ -330,12 +377,12 @@ export function generateTypes(
     ...namespaces.map(dedent),
     "};",
     "",
-  ].join("\n");
+  ].join("\n")
 
   return {
     source,
     nameMap,
     stats: { toolkits: emittedNamespaces, tools: tools.length, typedOutputs },
     warnings: nameMap.warnings,
-  };
+  }
 }

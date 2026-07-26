@@ -6,8 +6,8 @@
  * needs to call this separately. Use it when you changed a migration and want
  * the schema updated without a catalog pull.
  */
-import { closeDb, migrateDb } from "./src/db";
+import { closeDb, migrateDb } from "./src/db"
 
-await migrateDb();
-await closeDb();
-console.log("migrations applied");
+await migrateDb()
+await closeDb()
+console.log("migrations applied")

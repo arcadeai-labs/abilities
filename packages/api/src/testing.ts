@@ -12,30 +12,34 @@
  * not that a stand-in behaved as its author imagined.
  */
 
-import { executeTool } from "./arcade";
+import { executeTool } from "./arcade"
+import { isRecord } from "./schema-dsl"
 
 /** Any identifier works for `Math`; nothing about it is user-scoped. */
-export const TEST_USER = process.env.ARCADE_USER_ID ?? "vitest@arcade.dev";
+export const TEST_USER = process.env.ARCADE_USER_ID ?? "vitest@arcade.dev"
 
 /**
  * A user who has authorized nothing, for exercising the authorization pre-flight.
  * Deliberately not derived from a real account.
  */
-export const UNAUTHORIZED_USER = "vitest-unauthorized@example.invalid";
+export const UNAUTHORIZED_USER = "vitest-unauthorized@example.invalid"
 
 /**
  * The same bridge `runScript` installs: the sandbox takes its tool executor as a
  * parameter in production too, so passing the real one here is the production
  * wiring rather than a substitute for it.
  */
-export const realBridge = (qualifiedName: string, _path: string, args: unknown) =>
-  executeTool(qualifiedName, args as Record<string, unknown>, TEST_USER);
+export const realBridge = (
+  qualifiedName: string,
+  _path: string,
+  args: unknown
+) => executeTool(qualifiedName, isRecord(args) ? args : {}, TEST_USER)
 
 export function requireArcadeKey(): void {
   if (!process.env.ARCADE_API_KEY) {
     throw new Error(
       "These tests call the real Arcade API. Set ARCADE_API_KEY in the workspace-root .env " +
-        "and run `pnpm --filter @repo/api sync` first.",
-    );
+        "and run `pnpm --filter @repo/api sync` first."
+    )
   }
 }

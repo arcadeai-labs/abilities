@@ -13,48 +13,49 @@
 //
 // Each app calls this from its own `dev:portless` script, so running one app
 // directly produces the same URL as running everything via `pnpm dev`.
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process"
 
 const git = (...args) => {
   try {
     return execFileSync("git", args, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
+    }).trim()
   } catch {
-    return "";
+    return ""
   }
-};
+}
 
 /** Branch names allow `/`, `_`, `.` and more; hostname labels allow none of them. */
 const slug = (s) =>
   s
     .toLowerCase()
     .replace(/[^a-z0-9-]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/^-+|-+$/g, "")
 
 /** Prefer what the remote calls default; fall back to the usual names. */
 const isDefaultBranch = (branch) => {
-  const remoteHead = git("symbolic-ref", "--short", "refs/remotes/origin/HEAD");
-  if (remoteHead) return branch === remoteHead.replace(/^origin\//, "");
-  return branch === "main" || branch === "master";
-};
-
-export function branchLabel() {
-  const branch = git("rev-parse", "--abbrev-ref", "HEAD");
-  if (!branch || isDefaultBranch(branch)) return "";
-  // Detached HEAD reports the literal "HEAD"; the short sha identifies it better.
-  const label = branch === "HEAD" ? git("rev-parse", "--short", "HEAD") : branch;
-  return label ? slug(label) : "";
+  const remoteHead = git("symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+  if (remoteHead) return branch === remoteHead.replace(/^origin\//, "")
+  return branch === "main" || branch === "master"
 }
 
-export const portlessName = (app) => [branchLabel(), app].filter(Boolean).join(".");
+export function branchLabel() {
+  const branch = git("rev-parse", "--abbrev-ref", "HEAD")
+  if (!branch || isDefaultBranch(branch)) return ""
+  // Detached HEAD reports the literal "HEAD"; the short sha identifies it better.
+  const label = branch === "HEAD" ? git("rev-parse", "--short", "HEAD") : branch
+  return label ? slug(label) : ""
+}
+
+export const portlessName = (app) =>
+  [branchLabel(), app].filter(Boolean).join(".")
 
 if (import.meta.filename === process.argv[1]) {
-  const app = process.argv[2];
+  const app = process.argv[2]
   if (!app) {
-    console.error("usage: node scripts/portless-name.mjs <app-name>");
-    process.exit(1);
+    console.error("usage: node scripts/portless-name.mjs <app-name>")
+    process.exit(1)
   }
-  console.log(portlessName(app));
+  console.log(portlessName(app))
 }

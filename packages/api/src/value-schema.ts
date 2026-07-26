@@ -13,48 +13,54 @@
  */
 
 /** Every `val_type` seen upstream. Left open — an unrecognised type degrades to `unknown`. */
-export type ValType = "string" | "integer" | "number" | "boolean" | "json" | "array";
+export type ValType =
+  | "string"
+  | "integer"
+  | "number"
+  | "boolean"
+  | "json"
+  | "array"
 
 export type ValueSchema = {
   /** Compare against {@link ValType}, but treat unknown values as opaque rather than invalid. */
-  val_type: string;
+  val_type: string
   /** Always a string list upstream, even for numeric-looking values. */
-  enum?: string[];
-  nullable?: boolean;
-  description?: string;
+  enum?: string[]
+  nullable?: boolean
+  description?: string
 
   /** Object shape, when `val_type` is `"json"`. Absent means "unspecified", not "empty". */
-  properties?: Record<string, ValueSchema>;
+  properties?: Record<string, ValueSchema>
   /**
    * Which of `properties` are guaranteed present. An empty list alongside a
    * non-empty `properties` is under-specification upstream rather than a claim
    * that nothing is required — see {@link requiredKeys}.
    */
-  required_keys?: string[];
+  required_keys?: string[]
 
   /** Element type, when `val_type` is `"array"`. */
-  inner_val_type?: string;
+  inner_val_type?: string
   /** Element object shape, when `inner_val_type` is `"json"`. */
-  inner_properties?: Record<string, ValueSchema>;
-  inner_required_keys?: string[];
-};
+  inner_properties?: Record<string, ValueSchema>
+  inner_required_keys?: string[]
+}
 
 /** One entry of a tool's `input.parameters`. */
 export type ToolParameter = {
-  name: string;
-  value_schema: ValueSchema;
-  description?: string;
-  required?: boolean;
-  inferrable?: boolean;
-};
+  name: string
+  value_schema: ValueSchema
+  description?: string
+  required?: boolean
+  inferrable?: boolean
+}
 
-export type ToolInput = { parameters?: ToolParameter[] };
+export type ToolInput = { parameters?: ToolParameter[] }
 
 export type ToolOutput = {
-  available_modes?: string[];
-  description?: string;
-  value_schema?: ValueSchema;
-};
+  available_modes?: string[]
+  description?: string
+  value_schema?: ValueSchema
+}
 
 /**
  * Whether a schema says anything about its own shape. `{ val_type: "json" }` with
@@ -62,17 +68,22 @@ export type ToolOutput = {
  * become `unknown` in generated types, which is the whole reason coverage matters.
  */
 export function isSpecified(schema: ValueSchema | undefined): boolean {
-  if (!schema) return false;
-  if (schema.val_type === "json") return Object.keys(schema.properties ?? {}).length > 0;
+  if (!schema) return false
+  if (schema.val_type === "json")
+    return Object.keys(schema.properties ?? {}).length > 0
   if (schema.val_type === "array") {
-    return schema.inner_val_type !== "json" || Object.keys(schema.inner_properties ?? {}).length > 0;
+    return (
+      schema.inner_val_type !== "json" ||
+      Object.keys(schema.inner_properties ?? {}).length > 0
+    )
   }
-  return true;
+  return true
 }
 
 /** True when a tool declares a usable output shape. */
-export const hasTypedOutput = (output: ToolOutput | null | undefined): boolean =>
-  isSpecified(output?.value_schema);
+export const hasTypedOutput = (
+  output: ToolOutput | null | undefined
+): boolean => isSpecified(output?.value_schema)
 
 /**
  * Resolves which keys of an object schema are required.
@@ -87,10 +98,10 @@ export const hasTypedOutput = (output: ToolOutput | null | undefined): boolean =
  */
 export function requiredKeys(
   properties: Record<string, ValueSchema>,
-  declared: string[] | undefined,
+  declared: string[] | undefined
 ): Set<string> {
-  if (declared === undefined) return new Set();
-  const known = declared.filter((k) => k in properties);
+  if (declared === undefined) return new Set()
+  const known = declared.filter((k) => k in properties)
   // Nothing declared but properties present → treat requiredness as unspecified.
-  return new Set(known);
+  return new Set(known)
 }

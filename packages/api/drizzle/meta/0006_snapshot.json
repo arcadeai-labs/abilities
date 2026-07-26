@@ -206,9 +206,7 @@
         "scripts_name_unique": {
           "name": "scripts_name_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "name"
-          ]
+          "columns": ["name"]
         }
       },
       "policies": {},
