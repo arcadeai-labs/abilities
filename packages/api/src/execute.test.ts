@@ -8,6 +8,7 @@
  */
 
 import { eq, like } from "drizzle-orm";
+import app from "./app";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db, migrateDb } from "./db";
 import type { ScriptParams } from "./assemble";
@@ -85,6 +86,41 @@ describe("storing", () => {
 
     const report = await revalidateAll();
     expect(report.stale.filter((s) => s.name.startsWith(PREFIX))).toEqual([]);
+  });
+});
+
+describe("addressing", () => {
+  it("resolves a script by name or by id", async () => {
+    // The list response carries `id` and run records point at it, so the obvious
+    // next request has to work — names exclude `_`, so the two cannot collide.
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      run: `async run(input, { math }) {
+  return { sum: await math.add({ a: "1", b: "1" }) };
+}`,
+    });
+
+    const byName = await app.request(`/api/scripts/${script.name}`);
+    const byId = await app.request(`/api/scripts/${script.id}`);
+
+    expect([byName.status, byId.status]).toEqual([200, 200]);
+    expect(await byName.json()).toEqual(await byId.json());
+  });
+
+  it("refuses a name that could be mistaken for an id", async () => {
+    const response = await app.request("/api/scripts/scr_pretending", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        input: { type: "object", properties: {} },
+        output: { type: "object", properties: {} },
+        run: "async run(input, { log }) {\n  return {};\n}",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_name" });
   });
 });
 

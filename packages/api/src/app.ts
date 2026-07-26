@@ -1,5 +1,5 @@
 import { Scalar } from "@scalar/hono-api-reference";
-import { asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { asc, count, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { describeRoute, resolver, validator } from "hono-openapi";
 import { z } from "zod";
@@ -31,6 +31,12 @@ import { validateScript } from "./validate";
 
 // Hosts need this to shut the database down cleanly; see ./db.
 export { closeDb, DATA_DIR } from "./db";
+
+/**
+ * Lowercase letters, digits and dashes. Deliberately excludes `_`, which keeps
+ * names disjoint from the `scr_…` id space so one path parameter can accept either.
+ */
+const SCRIPT_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 const json =(schema: Parameters<typeof resolver>[0], description: string) => ({
   description,
@@ -228,14 +234,26 @@ export const routes = new Hono()
       responses: {
         200: json(ScriptSchema, "Replaced an existing script."),
         201: json(ScriptSchema, "Stored a new script."),
+        400: json(ErrorResponseSchema, "The name is not a valid script name."),
         422: json(ValidationSchema, "The script did not validate; nothing was stored."),
       },
     }),
     validator("json", UpsertScriptSchema),
     async (c) => {
+      const name = c.req.param("name");
+      if (!SCRIPT_NAME.test(name)) {
+        return c.json(
+          {
+            error: "invalid_name",
+            message: "A script name is lowercase letters, digits and dashes — no underscores, so it can never collide with an `scr_…` id.",
+          },
+          400,
+        );
+      }
+
       const { description, ...params } = c.req.valid("json");
       const result = await upsertScript({
-        name: c.req.param("name"),
+        name,
         description,
         params: params as never,
       });
@@ -321,9 +339,10 @@ export const routes = new Hono()
       },
     }),
     async (c) => {
+      const key = c.req.param("name");
       const [deleted] = await db
         .delete(scripts)
-        .where(eq(scripts.name, c.req.param("name")))
+        .where(or(eq(scripts.name, key), eq(scripts.id, key)))
         .returning({ id: scripts.id });
       if (!deleted) return c.json({ error: "not_found", message: "No such script." }, 404);
       return c.json({ deleted: deleted.id }, 200);
@@ -388,8 +407,18 @@ const namespacesOf = (row: ScriptRow): string[] => [
 ].sort();
 
 /** Scripts are addressed by name; `id` stays internal, for run records to point at. */
-async function findScript(name: string) {
-  const [row] = await db.select().from(scripts).where(eq(scripts.name, name));
+/**
+ * A script is addressed by name, but `id` is what run records carry and what the
+ * list response shows, so both resolve here.
+ *
+ * There is no ambiguity to resolve between them: {@link SCRIPT_NAME} forbids
+ * underscores and ids are always `scr_…`, so the two namespaces cannot overlap.
+ */
+async function findScript(key: string) {
+  const [row] = await db
+    .select()
+    .from(scripts)
+    .where(or(eq(scripts.name, key), eq(scripts.id, key)));
   return row;
 }
 

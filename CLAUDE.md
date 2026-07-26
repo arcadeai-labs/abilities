@@ -203,7 +203,9 @@ and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
   holds an invariant: every row type-checks against its snapshot. There is no
   `invalid` state — only `stale`, when a later sync moves the catalog. That's what
   `POST /api/revalidate` reports. Writes are an upsert on `name`, which is the key
-  authors already have; `id` stays internal for run records to point at.
+  authors already have. `id` also resolves on those routes, because the list
+  response and every run record carry it — script names exclude `_` and ids are
+  `scr_…`, so the two namespaces cannot collide and one path parameter serves both.
 - The sandbox (`src/sandbox.ts`) is QuickJS-on-WASM via the **`sync`** variant, not
   `asyncify`: an asyncified module can only suspend for one host call at a time
   across every context inside it, which would serialise concurrent runs. Host calls
