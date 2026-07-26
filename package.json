@@ -13,7 +13,8 @@
     "urls": "portless list",
     "fmt": "biome check --write --unsafe .",
     "check:fmt": "node ./scripts/check-fmt.mjs",
-    "check": "pnpm run typecheck && biome check ."
+    "check": "pnpm run typecheck && biome check --error-on-warnings .",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.5",

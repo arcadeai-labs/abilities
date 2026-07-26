@@ -1,0 +1,37 @@
+#!/bin/sh
+# Nothing leaves the machine until `pnpm run check` passes — turbo typecheck plus
+# `biome check --error-on-warnings`, so a warning blocks the push just like an
+# error does. The root `prepare` script points core.hooksPath here, which is why
+# this is version-controlled rather than living in .git/hooks (and why it works
+# the same in every git worktree).
+#
+# The test suites deliberately stay out of it: `@repo/api`'s vitest calls the real
+# Arcade API and needs the PGlite lock, so it can't run behind every push.
+#
+# `git push --no-verify` skips this.
+
+# stdin carries one "<local ref> <local sha> <remote ref> <remote sha>" line per
+# ref. Deleting a remote branch sends an all-zero local sha and has no commits to
+# check, so only bother when at least one line names a real object.
+pushing=""
+while read -r _local_ref local_sha _remote_ref _remote_sha; do
+  case "$local_sha" in
+  *[!0]*) pushing="yes" ;;
+  esac
+done
+
+[ -n "$pushing" ] || exit 0
+
+if ! command -v pnpm >/dev/null 2>&1; then
+  echo "pre-push: pnpm is not on PATH, so the checks cannot run." >&2
+  echo "          Fix PATH for this shell, or push with --no-verify." >&2
+  exit 1
+fi
+
+echo "pre-push: pnpm run check"
+pnpm run check </dev/null || {
+  echo >&2
+  echo "pre-push: checks failed — push aborted. \`pnpm fmt\` fixes the" >&2
+  echo "          mechanical ones; --no-verify overrides." >&2
+  exit 1
+}
