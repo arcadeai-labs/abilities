@@ -1,18 +1,17 @@
 /**
- * Reads a script's `z.…` contract out of its syntax tree, without evaluating it.
+ * The shape language a script's contract is expressed in, and the checks over it.
  *
- * A script declares `input`, `output` and `expect` as `z` expressions, and those
- * declarations have to become real runtime checks — the type checker can be lied
- * to, so the values crossing in and out of the sandbox get validated for real. The
- * obvious way to get there is to execute the config; interpreting the AST instead
- * keeps the promise that storing a script never runs any of it.
+ * `Spec` is the one intermediate form. A script's `input`/`output`/`expect` arrive
+ * as JSON Schema and convert into it (./json-schema); the catalog's own
+ * `ValueSchema` converts into it too. One validator then covers both, so the
+ * argument leaving the sandbox and the result coming back are checked by the same
+ * code as the script's declared contract.
  *
- * The DSL is deliberately small (see the prelude in ./codegen), which is what makes
- * a total interpreter over it tractable: every node is either understood or a
- * diagnostic, never a guess.
+ * These checks are the ones that actually hold at runtime. The type checker can be
+ * lied to and a stored row can drift, so nothing crossing the sandbox boundary is
+ * trusted on the strength of having type-checked earlier.
  */
 
-import ts from "typescript";
 import { requiredKeys, type ToolInput, type ValueSchema } from "./value-schema";
 
 export type Spec =
@@ -26,156 +25,6 @@ export type Spec =
   | { kind: "record"; value: Spec }
   | { kind: "object"; fields: Record<string, { spec: Spec; optional: boolean }> }
   | { kind: "nullable"; inner: Spec };
-
-export class DslError extends Error {
-  constructor(
-    message: string,
-    readonly node: ts.Node,
-  ) {
-    super(message);
-  }
-}
-
-const literalValue = (node: ts.Expression): string | number | boolean => {
-  if (ts.isStringLiteralLike(node)) return node.text;
-  if (ts.isNumericLiteral(node)) return Number(node.text);
-  if (node.kind === ts.SyntaxKind.TrueKeyword) return true;
-  if (node.kind === ts.SyntaxKind.FalseKeyword) return false;
-  if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.MinusToken) {
-    const inner = literalValue(node.operand);
-    if (typeof inner === "number") return -inner;
-  }
-  throw new DslError("Only literal values are allowed here.", node);
-};
-
-const numberArgument = (node: ts.Expression | undefined, at: ts.Node): number => {
-  if (!node) throw new DslError("Expected a number argument.", at);
-  const value = literalValue(node);
-  if (typeof value !== "number") throw new DslError("Expected a number argument.", node);
-  return value;
-};
-
-/**
- * Interprets a `z`-rooted expression. Modifier calls (`.optional()`, `.min()`)
- * wrap outward, so the chain is unwound from the outside in.
- */
-export function interpretSpec(node: ts.Expression): { spec: Spec; optional: boolean } {
-  if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
-    const method = node.expression.name.text;
-    const target = node.expression.expression;
-
-    // `z.foo(...)` — a constructor rather than a modifier.
-    if (ts.isIdentifier(target) && target.text === "z") {
-      return { spec: construct(method, node), optional: false };
-    }
-
-    const inner = interpretSpec(target);
-    switch (method) {
-      case "optional":
-        return { ...inner, optional: true };
-      case "nullable":
-        return { spec: { kind: "nullable", inner: inner.spec }, optional: inner.optional };
-      case "describe":
-        return inner;
-      case "int":
-        if (inner.spec.kind !== "number") throw new DslError("`int()` applies to numbers.", node);
-        return { ...inner, spec: { ...inner.spec, int: true } };
-      case "min":
-      case "max": {
-        const value = numberArgument(node.arguments[0], node);
-        if (inner.spec.kind === "string" || inner.spec.kind === "number" || inner.spec.kind === "array") {
-          return { ...inner, spec: { ...inner.spec, [method]: value } as Spec };
-        }
-        throw new DslError(`\`${method}()\` does not apply to this schema.`, node);
-      }
-      case "email":
-      case "url":
-        if (inner.spec.kind !== "string") throw new DslError(`\`${method}()\` applies to strings.`, node);
-        return { ...inner, spec: { ...inner.spec, format: method } };
-      case "regex": {
-        const argument = node.arguments[0];
-        if (!argument || !ts.isRegularExpressionLiteral(argument)) {
-          throw new DslError("`regex()` needs a literal regular expression.", node);
-        }
-        if (inner.spec.kind !== "string") throw new DslError("`regex()` applies to strings.", node);
-        const body = argument.text.slice(1, argument.text.lastIndexOf("/"));
-        return { ...inner, spec: { ...inner.spec, pattern: body } };
-      }
-      default:
-        throw new DslError(`Unknown schema method \`${method}\`.`, node);
-    }
-  }
-
-  throw new DslError("Expected a `z.…` schema expression.", node);
-}
-
-function construct(method: string, call: ts.CallExpression): Spec {
-  const [first] = call.arguments;
-
-  switch (method) {
-    case "string":
-      return { kind: "string" };
-    case "number":
-      return { kind: "number" };
-    case "int":
-      return { kind: "number", int: true };
-    case "boolean":
-      return { kind: "boolean" };
-    case "unknown":
-      return { kind: "unknown" };
-
-    case "literal":
-      if (!first) throw new DslError("`z.literal()` needs a value.", call);
-      return { kind: "literal", value: literalValue(first) };
-
-    case "enum": {
-      if (!first || !ts.isArrayLiteralExpression(first)) {
-        throw new DslError("`z.enum()` needs an array literal of strings.", call);
-      }
-      const values = first.elements.map((element) => {
-        const value = literalValue(element);
-        if (typeof value !== "string") throw new DslError("`z.enum()` takes strings.", element);
-        return value;
-      });
-      return { kind: "enum", values };
-    }
-
-    case "array": {
-      if (!first) throw new DslError("`z.array()` needs an element schema.", call);
-      const element = interpretSpec(first);
-      if (element.optional) throw new DslError("Array elements may not be optional.", first);
-      return { kind: "array", element: element.spec };
-    }
-
-    case "record": {
-      if (!first) throw new DslError("`z.record()` needs a value schema.", call);
-      return { kind: "record", value: interpretSpec(first).spec };
-    }
-
-    case "object": {
-      if (!first || !ts.isObjectLiteralExpression(first)) {
-        throw new DslError("`z.object()` needs an object literal.", call);
-      }
-      const fields: Record<string, { spec: Spec; optional: boolean }> = {};
-      for (const property of first.properties) {
-        if (!ts.isPropertyAssignment(property)) {
-          throw new DslError("Shape entries must be `key: z.…` assignments.", property);
-        }
-        const name = ts.isIdentifier(property.name)
-          ? property.name.text
-          : ts.isStringLiteralLike(property.name)
-            ? property.name.text
-            : null;
-        if (name === null) throw new DslError("Shape keys must be plain names.", property.name);
-        fields[name] = interpretSpec(property.initializer);
-      }
-      return { kind: "object", fields };
-    }
-
-    default:
-      throw new DslError(`Unknown schema constructor \`z.${method}\`.`, call);
-  }
-}
 
 // ── catalog schemas as specs ───────────────────────────────────────────────
 

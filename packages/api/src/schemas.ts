@@ -141,19 +141,48 @@ export const ValidationSchema = z
   })
   .meta({ id: "Validation" });
 
-export const ValidateRequestSchema = z
-  .object({ source: z.string().describe("A script module; see `GET /api/types`.") })
-  .meta({ id: "ValidateRequest" });
+const JsonSchemaSchema = z
+  .record(z.string(), z.unknown())
+  .describe("A JSON Schema. Supported: type, enum, const, properties, required, items, additionalProperties, format, pattern, min/max, nullable.");
+
+export const ScriptParamsSchema = z
+  .object({
+    input: JsonSchemaSchema.describe("Shape of the value `run` receives."),
+    output: JsonSchemaSchema.describe("Shape the return value must satisfy."),
+    expect: z
+      .record(z.string(), JsonSchemaSchema)
+      .optional()
+      .describe(
+        "Shapes for tools whose catalog output is unspecified, keyed by tool path (`slack.sendMessage`). " +
+          "Unlike a catalog shape this is an assertion, so a mismatch fails the run.",
+      ),
+    run: z
+      .string()
+      .describe(
+        "The method source, starting `async run(input, { ... })`. Destructuring the second " +
+          "parameter is what grants tool access. A script imports nothing.",
+      ),
+  })
+  .meta({ id: "ScriptParams" });
+
+export const UpsertScriptSchema = ScriptParamsSchema.extend({
+  description: z.string().max(500).optional(),
+}).meta({ id: "UpsertScript" });
 
 export const ScriptSchema = z
   .object({
     id: z.string(),
     name: z.string(),
     description: z.string().nullable(),
-    source: z.string(),
+    run: z.string().describe("The method source, as submitted."),
+    input: z.unknown().describe("JSON Schema, as submitted."),
+    output: z.unknown().describe("JSON Schema, as submitted."),
+    expect: z.record(z.string(), z.unknown()).describe("JSON Schemas by tool path, as submitted."),
     version: z.int(),
     grant: z.array(z.string()).describe("Upstream tools this script may call."),
+    paths: z.record(z.string(), z.string()).describe("`github.getIssue` to `Github.GetIssue`."),
     namespaces: z.array(z.string()),
+    source: z.string().describe("The module assembled from the fields above; what type-checked."),
     snapshotId: z.string(),
     stale: z.boolean().describe("True when the catalog moved on since this was validated."),
     createdAt: z.string(),
@@ -164,20 +193,6 @@ export const ScriptSchema = z
 export const ScriptsResponseSchema = z
   .object({ total: z.int(), snapshotId: z.string(), scripts: z.array(ScriptSchema) })
   .meta({ id: "ScriptsResponse" });
-
-export const CreateScriptSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1)
-      .max(64)
-      .regex(/^[a-z0-9][a-z0-9-]*$/, "Lowercase letters, digits and dashes."),
-    description: z.string().max(500).optional(),
-    source: z.string(),
-  })
-  .meta({ id: "CreateScript" });
-
-export const UpdateScriptSchema = CreateScriptSchema.omit({ name: true }).meta({ id: "UpdateScript" });
 
 export const RunRequestSchema = z
   .object({

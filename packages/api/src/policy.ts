@@ -66,50 +66,44 @@ export function checkPolicy(file: ts.SourceFile): PolicyResult {
     });
 
   // ── imports ──────────────────────────────────────────────────────────────
-  // The module graph has to be closed for the grant to mean anything: a second
-  // module could call tools the first never named.
+  // A script imports nothing at all: `z`, `defineScript` and every toolkit are
+  // ambient (see ./codegen). That keeps the module graph closed by construction —
+  // a second module could call tools the grant never named — and leaves no
+  // allow-listed specifier for anything to hide behind.
   for (const statement of file.statements) {
-    if (ts.isImportDeclaration(statement)) {
-      const specifier = ts.isStringLiteral(statement.moduleSpecifier)
-        ? statement.moduleSpecifier.text
-        : null;
-      if (specifier !== RUNTIME_MODULE) {
-        report(
-          statement,
-          "policy/no-import",
-          `Only "${RUNTIME_MODULE}" may be imported; got ${specifier ? `"${specifier}"` : "a computed specifier"}.`,
-        );
-      }
+    if (ts.isImportDeclaration(statement) || ts.isImportEqualsDeclaration(statement)) {
+      report(
+        statement,
+        "policy/no-import",
+        "A script imports nothing; toolkits, `z` and `defineScript` are already in scope.",
+      );
       continue;
     }
-    if (ts.isExportDeclaration(statement) || ts.isImportEqualsDeclaration(statement)) {
-      report(statement, "policy/no-reexport", "A script may not re-export from another module.");
+    if (ts.isExportDeclaration(statement) || ts.isExportAssignment(statement)) {
+      report(statement, "policy/no-export", "A script exports nothing.");
     }
   }
 
-  // ── the default export ───────────────────────────────────────────────────
-  const defaultExport = file.statements.find(ts.isExportAssignment);
-  if (!defaultExport) {
+  // ── the defineScript call ────────────────────────────────────────────────
+  const call = file.statements
+    .filter(ts.isExpressionStatement)
+    .map((statement) => statement.expression)
+    .find(
+      (expression): expression is ts.CallExpression =>
+        ts.isCallExpression(expression) &&
+        ts.isIdentifier(expression.expression) &&
+        expression.expression.text === "defineScript",
+    );
+
+  if (!call) {
     diagnostics.push({
       category: "policy",
-      code: "policy/missing-default-export",
+      code: "policy/missing-define-script",
       severity: "error",
-      message: `A script must \`export default defineScript({ ... })\`.`,
+      message: "A script must be a single `defineScript({ ... })` call.",
       start: { line: 1, column: 1 },
       end: { line: 1, column: 1 },
     });
-  }
-
-  const call =
-    defaultExport && ts.isCallExpression(defaultExport.expression)
-      ? defaultExport.expression
-      : undefined;
-  if (defaultExport && (!call || !ts.isIdentifier(call.expression) || call.expression.text !== "defineScript")) {
-    report(
-      defaultExport,
-      "policy/missing-define-script",
-      "The default export must be a direct `defineScript({ ... })` call.",
-    );
   }
 
   // ── run(), and the grant it declares ─────────────────────────────────────

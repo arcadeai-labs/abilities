@@ -10,7 +10,8 @@
 import { eq, like } from "drizzle-orm";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { db, migrateDb } from "./db";
-import { revalidateAll, runScript, storeScript } from "./execute";
+import type { ScriptParams } from "./assemble";
+import { revalidateAll, runScript, upsertScript } from "./execute";
 import { runs, type ScriptRow, scripts } from "./schema";
 import { requireArcadeKey, TEST_USER, UNAUTHORIZED_USER } from "./testing";
 
@@ -27,14 +28,13 @@ afterAll(async () => {
 });
 
 let counter = 0;
-async function store(source: string): Promise<ScriptRow> {
-  const result = await storeScript({ name: `${PREFIX}${++counter}`, source });
+async function store(params: ScriptParams): Promise<ScriptRow> {
+  const result = await upsertScript({ name: `${PREFIX}${++counter}`, params });
   if (!result.ok) {
-    throw new Error(
-      "conflict" in result
-        ? result.conflict
-        : `expected valid, got: ${result.validation.diagnostics.map((d) => `${d.code} ${d.message}`).join(" | ")}`,
-    );
+    const detail = result.validation.diagnostics
+      .map((d: { code: string; message: string }) => `${d.code} ${d.message}`)
+      .join(" | ");
+    throw new Error(`expected valid, got: ${detail}`);
   }
   return result.script;
 }
@@ -42,39 +42,33 @@ async function store(source: string): Promise<ScriptRow> {
 describe("storing", () => {
   it("refuses an invalid script and writes nothing", async () => {
     const before = await db.select().from(scripts);
-    const result = await storeScript({
+    const result = await upsertScript({
       name: `${PREFIX}invalid`,
-      source: `
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ sum: z.number() }),
-  async run(input, { math }) {
-    return { sum: await math.add({ a: "1", b: "2" }) };
-  },
-});
-`,
+      params: {
+        input: { type: "object", properties: {} },
+        output: { type: "object", properties: { sum: { type: "number" } }, required: ["sum"] },
+        run: `async run(input, { math }) {
+  return { sum: await math.add({ a: "1", b: "2" }) };
+}`,
+      },
     });
 
     expect(result.ok).toBe(false);
     // `Math.Add` returns a string; the contract promises a number.
-    if (!result.ok && "validation" in result) {
-      expect(result.validation.diagnostics.map((d) => d.code)).toContain("TS2322");
+    if (!result.ok) {
+      expect(result.validation.diagnostics.map((d: { code: string }) => d.code)).toContain("TS2322");
     }
     expect(await db.select().from(scripts)).toHaveLength(before.length);
   });
 
   it("records the grant derived from the source", async () => {
-    const script = await store(`
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ sum: z.string() }),
-  async run(input, { math }) {
-    return { sum: await math.add({ a: "1", b: "2" }) };
-  },
-});
-`);
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      run: `async run(input, { math }) {
+  return { sum: await math.add({ a: "1", b: "2" }) };
+}`,
+    });
 
     expect(script.toolGrant).toEqual({ "math.add": "Math.Add" });
     expect(script.namespaces).toEqual(["math"]);
@@ -82,16 +76,13 @@ export default defineScript({
   });
 
   it("reports nothing stale immediately after storing", async () => {
-    await store(`
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ sum: z.string() }),
-  async run(input, { math }) {
-    return { sum: await math.add({ a: "4", b: "4" }) };
-  },
-});
-`);
+    await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      run: `async run(input, { math }) {
+  return { sum: await math.add({ a: "4", b: "4" }) };
+}`,
+    });
 
     const report = await revalidateAll();
     expect(report.stale.filter((s) => s.name.startsWith(PREFIX))).toEqual([]);
@@ -100,19 +91,24 @@ export default defineScript({
 
 describe("running", () => {
   it("executes against the real API and persists the run", async () => {
-    const script = await store(`
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({ a: z.string(), b: z.string() }),
-  output: z.object({ sum: z.string(), doubled: z.string() }),
-  async run(input, { math, log }) {
-    const sum = await math.add({ a: input.a, b: input.b });
-    log("sum is", sum);
-    const doubled = await math.multiply({ a: sum, b: "2" });
-    return { sum, doubled };
-  },
-});
-`);
+    const script = await store({
+      input: {
+        type: "object",
+        properties: { a: { type: "string" }, b: { type: "string" } },
+        required: ["a", "b"],
+      },
+      output: {
+        type: "object",
+        properties: { sum: { type: "string" }, doubled: { type: "string" } },
+        required: ["sum", "doubled"],
+      },
+      run: `async run(input, { math, log }) {
+  const sum = await math.add({ a: input.a, b: input.b });
+  log("sum is", sum);
+  const doubled = await math.multiply({ a: sum, b: "2" });
+  return { sum, doubled };
+}`,
+    });
 
     const report = await runScript({ script, input: { a: "2", b: "3" }, userId: TEST_USER });
 
@@ -128,16 +124,13 @@ export default defineScript({
   });
 
   it("rejects input the declared contract does not allow, before anything runs", async () => {
-    const script = await store(`
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({ a: z.string() }),
-  output: z.object({ sum: z.string() }),
-  async run(input, { math }) {
-    return { sum: await math.add({ a: input.a, b: "1" }) };
-  },
-});
-`);
+    const script = await store({
+      input: { type: "object", properties: { a: { type: "string" } }, required: ["a"] },
+      output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      run: `async run(input, { math }) {
+  return { sum: await math.add({ a: input.a, b: "1" }) };
+}`,
+    });
 
     const report = await runScript({ script, input: { a: 7 }, userId: TEST_USER });
 
@@ -151,17 +144,14 @@ export default defineScript({
   it("fails the run when the result breaks the declared output", async () => {
     // Type-checks — `Number(...)` is a number — but 6.5 is not an integer, so the
     // contract only catches it once a real value comes back.
-    const script = await store(`
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ total: z.number().int() }),
-  async run(input, { math }) {
-    const total = await math.sumList({ numbers: ["1", "2", "3.5"] });
-    return { total: Number(total) };
-  },
-});
-`);
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { total: { type: "integer" } }, required: ["total"] },
+      run: `async run(input, { math }) {
+  const total = await math.sumList({ numbers: ["1", "2", "3.5"] });
+  return { total: Number(total) };
+}`,
+    });
 
     const report = await runScript({ script, input: {}, userId: TEST_USER });
 
@@ -174,16 +164,13 @@ export default defineScript({
   });
 
   it("reports an upstream tool failure as a tool error, not a script error", async () => {
-    const script = await store(`
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ quotient: z.string() }),
-  async run(input, { math }) {
-    return { quotient: await math.divide({ a: "1", b: "0" }) };
-  },
-});
-`);
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { quotient: { type: "string" } }, required: ["quotient"] },
+      run: `async run(input, { math }) {
+  return { quotient: await math.divide({ a: "1", b: "0" }) };
+}`,
+    });
 
     const report = await runScript({ script, input: {}, userId: TEST_USER });
 
@@ -192,17 +179,14 @@ export default defineScript({
   });
 
   it("stops before the sandbox when the user has not authorized a tool", async () => {
-    const script = await store(`
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ login: z.string() }),
-  async run(input, { github }) {
-    const me = await github.whoAmI({});
-    return { login: me.profile?.login ?? "unknown" };
-  },
-});
-`);
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { login: { type: "string" } }, required: ["login"] },
+      run: `async run(input, { github }) {
+  const me = await github.whoAmI({});
+  return { login: me.profile?.login ?? "unknown" };
+}`,
+    });
 
     const report = await runScript({ script, input: {}, userId: UNAUTHORIZED_USER });
 
@@ -215,16 +199,13 @@ export default defineScript({
   });
 
   it("enforces the stored grant even when it is narrower than the source", async () => {
-    const script = await store(`
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ sum: z.string() }),
-  async run(input, { math }) {
-    return { sum: await math.add({ a: "1", b: "1" }) };
-  },
-});
-`);
+    const script = await store({
+      input: { type: "object", properties: {} },
+      output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      run: `async run(input, { math }) {
+  return { sum: await math.add({ a: "1", b: "1" }) };
+}`,
+    });
 
     // Simulates the grant being tightened after validation — the sandbox builds its
     // tool surface from this column, not from the source.

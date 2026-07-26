@@ -20,24 +20,21 @@ export function compileScript(source: string): string {
 
   const transformer: ts.TransformerFactory<ts.SourceFile> = (context) => (root) => {
     const { factory } = context;
-    const statements: ts.Statement[] = [];
-
-    for (const statement of root.statements) {
-      // Validation guarantees the only import is `arcade:runtime`, whose bindings
-      // the prelude defines directly.
-      if (ts.isImportDeclaration(statement)) continue;
-
-      if (ts.isExportAssignment(statement)) {
-        statements.push(
-          factory.createExpressionStatement(
-            factory.createAssignment(factory.createIdentifier(CONFIG_GLOBAL), statement.expression),
-          ),
+    const statements = root.statements.map((statement) => {
+      // Validation guarantees the module is exactly one `defineScript({ … })`
+      // expression statement; binding its result is all the guest needs.
+      if (
+        ts.isExpressionStatement(statement) &&
+        ts.isCallExpression(statement.expression) &&
+        ts.isIdentifier(statement.expression.expression) &&
+        statement.expression.expression.text === "defineScript"
+      ) {
+        return factory.createExpressionStatement(
+          factory.createAssignment(factory.createIdentifier(CONFIG_GLOBAL), statement.expression),
         );
-        continue;
       }
-
-      statements.push(statement);
-    }
+      return statement;
+    });
 
     return factory.updateSourceFile(root, statements);
   };

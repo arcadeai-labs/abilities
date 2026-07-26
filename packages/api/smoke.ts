@@ -1,17 +1,19 @@
 /**
  * Manual end-to-end walk of the scripts API against an in-process Hono app.
  *
- * Not a vitest case — it hits Arcade for a real (or dry) run and prints a
- * narrative. Requires a synced catalog and `ARCADE_API_KEY` for the live step.
+ * Not a vitest case — it hits Arcade for real and prints a narrative. `Math` is
+ * the fixture because it needs no authorization and its answers are checkable.
+ * Requires a synced catalog and `ARCADE_API_KEY`.
  *
  *   pnpm --filter @repo/api smoke
  *
  * Stop the dev server first if PGlite is already locked by it.
  */
 import app from "./src/app";
-import { closeDb } from "./src/db";
+import { closeDb, migrateDb } from "./src/db";
 
 const USER_ID = process.env.ARCADE_USER_ID ?? "anirudh@arcade.dev";
+const NAME = "smoke-add";
 
 async function call(method: string, path: string, body?: unknown) {
   const response = await app.request(path, {
@@ -27,123 +29,128 @@ async function call(method: string, path: string, body?: unknown) {
 
 const line = (label: string) => console.log(`\n${"═".repeat(74)}\n${label}`);
 
-// ── 1. types ───────────────────────────────────────────────────────────────
-line("GET /api/types?toolkit=Github,Slack");
+await migrateDb();
+
+/** What an author submits: a method and two schemas. No module, no imports. */
+const PARAMS = {
+  input: {
+    type: "object",
+    properties: { a: { type: "string" }, b: { type: "string" } },
+    required: ["a", "b"],
+  },
+  output: {
+    type: "object",
+    properties: { sum: { type: "string" }, doubled: { type: "string" } },
+    required: ["sum", "doubled"],
+  },
+  run: `async run(input, { math, log }) {
+  const sum = await math.add({ a: input.a, b: input.b });
+  log("sum is", sum);
+  const doubled = await math.multiply({ a: sum, b: "2" });
+  return { sum, doubled };
+}`,
+};
+
+line("GET /api/types?toolkit=Math   — how you learn what `math` is");
 {
-  const { status, body, headers } = await call("GET", "/api/types?toolkit=Github,Slack");
+  const { status, body, headers } = await call("GET", "/api/types?toolkit=Math");
   const source = body as unknown as string;
-  console.log(`  ${status}  ${headers.get("content-type")}  snapshot=${headers.get("x-catalog-snapshot")}`);
-  console.log(`  ${source.split("\n").length} lines, ${(source.length / 1024).toFixed(0)}KiB`);
-  console.log(`  ${source.split("\n")[1]}`);
+  console.log(`  ${status}  snapshot=${headers.get("x-catalog-snapshot")}  ${source.split("\n").length} lines`);
+  console.log(`  ${source.split("\n").find((l) => l.includes("add(input:"))?.trim()}`);
+  console.log(`  imports in the declarations: ${/^\s*import /m.test(source) ? "yes" : "none"}`);
 }
 
-// ── 2. coverage ────────────────────────────────────────────────────────────
 line("GET /api/coverage");
 {
   const { status, body } = await call("GET", "/api/coverage");
-  const report = body as unknown as {
+  const r = body as unknown as {
     totals: { toolkits: number; tools: number; typed: number };
-    curated: { toolkits: number; tools: number; typed: number };
-    generated: { toolkits: number; tools: number; typed: number };
-    toolkits: { toolkit: string; tools: number; typed: number }[];
+    curated: { tools: number; typed: number };
+    generated: { tools: number; typed: number };
   };
   const pct = (t: { tools: number; typed: number }) => `${((100 * t.typed) / t.tools).toFixed(1)}%`;
-  console.log(`  ${status}`);
-  console.log(`  all       ${report.totals.tools} tools in ${report.totals.toolkits} toolkits → ${pct(report.totals)} typed`);
-  console.log(`  curated   ${report.curated.tools} tools in ${report.curated.toolkits} toolkits → ${pct(report.curated)} typed`);
-  console.log(`  generated ${report.generated.tools} tools in ${report.generated.toolkits} toolkits → ${pct(report.generated)} typed`);
-  console.log(`  best: ${report.toolkits.slice(0, 6).map((t) => `${t.toolkit} ${t.typed}/${t.tools}`).join(", ")}`);
+  console.log(`  ${status}  ${r.totals.tools} tools / ${r.totals.toolkits} toolkits`);
+  console.log(`  curated ${pct(r.curated)} typed · generated ${pct(r.generated)} typed`);
 }
 
-// ── 3. validate a broken script ────────────────────────────────────────────
-line("POST /api/validate  (a script that lies about its output)");
+line("POST /api/validate   — a run that contradicts its own output schema");
 {
   const { status, body } = await call("POST", "/api/validate", {
-    source: `
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ login: z.string() }),
-  async run(input, { github }) {
-    const me = await github.whoAmI({});
-    return { login: me.login };
-  },
-});
-`,
+    ...PARAMS,
+    output: { type: "object", properties: { sum: { type: "number" } }, required: ["sum"] },
   });
-  const result = body as unknown as { ok: boolean; grant: string[]; diagnostics: { code: string; message: string; start: { line: number } }[] };
-  console.log(`  ${status}  ok=${result.ok}  grant=[${result.grant}]`);
-  for (const d of result.diagnostics) console.log(`  ${d.code} @${d.start.line}  ${d.message.slice(0, 140)}`);
+  const r = body as unknown as {
+    ok: boolean;
+    grant: string[];
+    diagnostics: { code: string; message: string; start: { line: number } }[];
+  };
+  console.log(`  ${status}  ok=${r.ok}  grant=[${r.grant}]`);
+  for (const d of r.diagnostics) {
+    console.log(`  ${d.code} at run line ${d.start.line}: ${d.message.slice(0, 110)}`);
+  }
 }
 
-// ── 4. store a valid one ───────────────────────────────────────────────────
-const SOURCE = `
-import { defineScript, z } from "arcade:runtime";
-
-export default defineScript({
-  input: z.object({}),
-  output: z.object({ login: z.string(), greeting: z.string() }),
-
-  async run(input, { github, log }) {
-    const me = await github.whoAmI({});
-    const login = me.profile?.login ?? "unknown";
-    log(\`authenticated as \${login}\`);
-    return { login, greeting: "hello, " + login };
-  },
-});
-`;
-
-line("POST /api/scripts  (store)");
-let scriptId = "";
+line(`PUT /api/scripts/${NAME}   — upsert, twice`);
 {
-  const { status, body } = await call("POST", "/api/scripts", { name: "whoami", source: SOURCE });
-  const script = body as unknown as { id: string; version: number; grant: string[]; stale: boolean };
-  console.log(`  ${status}  id=${script.id} v${script.version} grant=[${script.grant}] stale=${script.stale}`);
-  scriptId = script.id;
+  const first = await call("PUT", `/api/scripts/${NAME}`, PARAMS);
+  const second = await call("PUT", `/api/scripts/${NAME}`, PARAMS);
+  const s = second.body as unknown as { version: number; grant: string[] };
+  console.log(`  first ${first.status} (created)   second ${second.status} (replaced, v${s.version})`);
+  console.log(`  grant=[${s.grant}]`);
 }
 
-if (!scriptId) {
-  // Already exists from a previous run — reuse it.
-  const { body } = await call("GET", "/api/scripts");
-  const list = body as unknown as { scripts: { id: string; name: string }[] };
-  scriptId = list.scripts.find((s) => s.name === "whoami")?.id ?? "";
-  console.log(`  reusing existing script ${scriptId}`);
-}
-
-// ── 5. run it ──────────────────────────────────────────────────────────────
-line(`POST /api/scripts/:id/run  (as ${USER_ID})`);
+line(`GET /api/scripts/${NAME}   — every aspect, straight from the database`);
 {
-  const { status, body } = await call("POST", `/api/scripts/${scriptId}/run`, {
-    input: {},
+  const { status, body } = await call("GET", `/api/scripts/${NAME}`);
+  const s = body as unknown as Record<string, unknown>;
+  console.log(`  ${status}  keys: ${Object.keys(s).join(", ")}`);
+  console.log(`  input:  ${JSON.stringify(s.input)}`);
+  console.log(`  output: ${JSON.stringify(s.output)}`);
+  console.log(`  expect: ${JSON.stringify(s.expect)}`);
+  console.log(`  paths:  ${JSON.stringify(s.paths)}`);
+  console.log(`  run[0]: ${String(s.run).split("\n")[0]}`);
+}
+
+line(`GET /api/scripts/${NAME}/types   — declarations for just this script's grant`);
+{
+  const { status, body } = await call("GET", `/api/scripts/${NAME}/types`);
+  const source = body as unknown as string;
+  console.log(`  ${status}  ${source.split("\n").length} lines, ${(source.length / 1024).toFixed(0)}KiB`);
+}
+
+line(`POST /api/scripts/${NAME}/run   — real tools, as ${USER_ID}`);
+{
+  const { status, body } = await call("POST", `/api/scripts/${NAME}/run`, {
+    input: { a: "2", b: "3" },
     userId: USER_ID,
   });
-  console.log(`  ${status}  ${JSON.stringify(body).slice(0, 500)}`);
+  console.log(`  ${status}  ${JSON.stringify(body).slice(0, 400)}`);
 }
 
-// ── 7. rejecting bad input against the declared contract ──────────────────
-line("POST /api/scripts/:id/run  (input the contract rejects)");
+line("POST run   — input the contract rejects");
 {
-  const { status, body } = await call("POST", `/api/scripts/${scriptId}/run`, {
-    input: "not an object",
+  const { status, body } = await call("POST", `/api/scripts/${NAME}/run`, {
+    input: { a: 2, b: "3" },
     userId: USER_ID,
   });
-  console.log(`  ${status}  ${JSON.stringify(body).slice(0, 220)}`);
+  console.log(`  ${status}  ${JSON.stringify((body as { outcome: unknown }).outcome)}`);
 }
 
-// ── 8. revalidate ─────────────────────────────────────────────────────────
 line("POST /api/revalidate");
 {
   const { status, body } = await call("POST", "/api/revalidate");
   console.log(`  ${status}  ${JSON.stringify(body)}`);
 }
 
-// ── 9. openapi document still builds ──────────────────────────────────────
 line("GET /api/openapi");
 {
   const { status, body } = await call("GET", "/api/openapi");
-  const document = body as unknown as { paths: Record<string, unknown>; components: { schemas: Record<string, unknown> } };
-  console.log(`  ${status}  ${Object.keys(document.paths).length} paths, ${Object.keys(document.components?.schemas ?? {}).length} schemas`);
+  const document = body as unknown as { paths: Record<string, unknown> };
+  console.log(`  ${status}  ${Object.keys(document.paths).length} paths`);
   console.log(`  ${Object.keys(document.paths).join("  ")}`);
 }
+
+line(`DELETE /api/scripts/${NAME}`);
+console.log(`  ${(await call("DELETE", `/api/scripts/${NAME}`)).status}`);
 
 await closeDb();

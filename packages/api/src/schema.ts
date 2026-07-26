@@ -51,6 +51,18 @@ export const scripts = pgTable("scripts", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
   description: text("description"),
+  /** The author's `async run(input, { … }) { … }` method, verbatim. */
+  run: text("run").notNull(),
+  /** JSON Schema for the run input, exactly as submitted. */
+  inputSchema: jsonb("input_schema").$type<unknown>().notNull(),
+  /** JSON Schema the return value must satisfy, exactly as submitted. */
+  outputSchema: jsonb("output_schema").$type<unknown>().notNull(),
+  /** Declared shapes for tools the catalog leaves unspecified, keyed by tool path. */
+  expectSchemas: jsonb("expect_schemas").$type<Record<string, unknown>>().notNull().default({}),
+  /**
+   * The module assembled from the columns above. Derived, stored for auditability:
+   * it is what actually type-checked.
+   */
   source: text("source").notNull(),
   /** Type-erased source, ready for the sandbox. */
   compiled: text("compiled").notNull(),

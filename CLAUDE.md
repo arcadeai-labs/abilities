@@ -122,7 +122,23 @@ compiles it, so there is no build step.
 
 Users write TypeScript against the catalog's types, validate it without running it,
 and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
-`POST /api/scripts` → `POST /api/scripts/:id/run`.
+`PUT /api/scripts/:name` → `POST /api/scripts/:name/run`.
+
+- **A script is not a module.** An author submits a contract as JSON Schema plus one
+  `async run(input, { github, log }) { … }` method as text; `src/assemble.ts` builds
+  the `defineScript({ … })` module that gets checked. Two things follow. Everything
+  the script needs is *ambient* (`src/codegen.ts` emits a global declaration file,
+  not `declare module`), so `src/policy.ts` rejects **every** import rather than
+  allow-listing one. And reading a script back is a plain database read — the
+  submitted schemas are stored verbatim, so nothing is re-derived from source.
+- Splicing text into generated code is a template injection: a `run` value that
+  closes its own method early would leave statements at the module's top level.
+  `checkAssembly` requires the assembled file to be exactly one `defineScript` call,
+  and the policy pass runs over the assembled module, so an escape fails twice.
+- Diagnostics come back in the author's coordinates. `toAuthorCoordinates` subtracts
+  the generated preamble's line count; `run` is spliced at column 1 so columns need
+  no adjustment. Anything landing *in* the preamble is re-reported as a `contract`
+  error, because those lines are ours.
 
 - **Arcade's `ValueSchema` is richer than the SDK says.** The wire format carries
   `properties`, `required_keys`, `inner_properties`, `inner_required_keys`,
@@ -153,16 +169,20 @@ and execute it in a sandbox. `GET /api/types` → `POST /api/validate` →
   our process on untrusted input, and recursive type computation is a compile bomb.
   Removing the capability is why validation doesn't need a worker — which matters
   because the frontend bundles this package and can't spawn a `.ts` worker.
-- The contract (`input`, `output`, `expect`) is **interpreted out of the AST** by
-  `src/schema-dsl.ts`, not evaluated. That is what keeps "storing a script never
-  runs it" true. `z` is a deliberately small Zod-shaped subset, not Zod: a total
-  interpreter over it is tractable, and Zod's declarations would dominate the cost
-  of checking a twenty-line script. The guest's `z` is an inert stub, because every
-  check runs host-side.
+- `Spec` (`src/schema-dsl.ts`) is the one intermediate shape: a script's JSON Schema
+  converts into it (`src/json-schema.ts`) and so does the catalog's `ValueSchema`, so
+  a single validator covers the declared contract, the arguments leaving the sandbox
+  and the results coming back. `specToSource` renders it back to `z.…` for the
+  assembled module, which is why there is one validation path rather than two.
+- `z` is a deliberately small Zod-shaped subset, not Zod: Zod's declarations would
+  dominate the cost of type-checking a twenty-line script. The guest's `z` is an
+  inert stub, because the contract was already read before anything ran and every
+  check happens host-side.
 - **Nothing writes to `scripts` except the validate-then-store path**, so the table
   holds an invariant: every row type-checks against its snapshot. There is no
   `invalid` state — only `stale`, when a later sync moves the catalog. That's what
-  `POST /api/revalidate` reports.
+  `POST /api/revalidate` reports. Writes are an upsert on `name`, which is the key
+  authors already have; `id` stays internal for run records to point at.
 - The sandbox (`src/sandbox.ts`) is QuickJS-on-WASM via the **`sync`** variant, not
   `asyncify`: an asyncified module can only suspend for one host call at a time
   across every context inside it, which would serialise concurrent runs. Host calls

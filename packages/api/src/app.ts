@@ -6,16 +6,16 @@ import { z } from "zod";
 import { coverage, loadCatalog } from "./catalog";
 import { generateTypes } from "./codegen";
 import { db } from "./db";
-import { revalidateAll, runScript, storeScript } from "./execute";
+import { revalidateAll, runScript, upsertScript } from "./execute";
 import { openApiDocument } from "./openapi";
 import { type ScriptRow, scripts, tools } from "./schema";
 import {
   CoverageResponseSchema,
-  CreateScriptSchema,
   ErrorResponseSchema,
   RevalidateResponseSchema,
   RunReportSchema,
   RunRequestSchema,
+  ScriptParamsSchema,
   ScriptSchema,
   ScriptsResponseSchema,
   SeedResponseSchema,
@@ -23,8 +23,7 @@ import {
   ToolsQuerySchema,
   ToolsResponseSchema,
   TypesQuerySchema,
-  UpdateScriptSchema,
-  ValidateRequestSchema,
+  UpsertScriptSchema,
   ValidationSchema,
 } from "./schemas";
 import { syncTools } from "./sync";
@@ -144,10 +143,11 @@ export const routes = new Hono()
     describeRoute({
       summary: "TypeScript declarations for the catalog",
       description:
-        "The `arcade:runtime` module scripts are written against: one method per tool, with its " +
-        "parameters typed from the catalog and its result typed where the catalog declares a shape. " +
-        "This is byte-identical to what `POST /api/validate` compiles against, so what you read is " +
-        "what gets checked. Filter with `?toolkit=` — the whole catalog is several megabytes.",
+        "The ambient declarations scripts are written against: one method per tool, with its " +
+        "parameters typed from the catalog and its result typed where the catalog declares a shape, " +
+        "plus `z` and `defineScript`. Everything is ambient, so a script imports nothing. This is " +
+        "byte-identical to what `POST /api/validate` compiles against, so what you read is what gets " +
+        "checked. Filter with `?toolkit=` — the whole catalog is several megabytes.",
       tags: ["scripts"],
       responses: {
         200: {
@@ -200,40 +200,47 @@ export const routes = new Hono()
     describeRoute({
       summary: "Validate a script without running it",
       description:
-        "Checks a script against the catalog: syntax policy, the capability grant read off `run`'s " +
-        "destructured context parameter, and the type checker. Nothing is stored and nothing executes, " +
-        "so this is the loop to iterate in. `ok: true` means the script conforms to its contract — it " +
-        "does not mean it is safe to run, which is the sandbox's job.",
+        "Checks a script against the catalog: the submitted contract, the capability grant read off " +
+        "`run`'s destructured context parameter, and the type checker. Nothing is stored and nothing " +
+        "executes, so this is the loop to iterate in. Diagnostic line numbers refer to your `run` text. " +
+        "`ok: true` means the script conforms to its contract — not that it is safe to run, which is " +
+        "the sandbox's job.",
       tags: ["scripts"],
       responses: { 200: json(ValidationSchema, "The verdict, with diagnostics.") },
     }),
-    validator("json", ValidateRequestSchema),
+    validator("json", ScriptParamsSchema),
     async (c) => {
-      const { source } = c.req.valid("json");
-      const { paths: _paths, contract: _contract, ...result } = await validateScript(source);
+      const { paths: _paths, contract: _contract, source: _source, ...result } = await validateScript(
+        c.req.valid("json") as never,
+      );
       return c.json(result, 200);
     },
   )
-  .post(
-    "/scripts",
+  .put(
+    "/scripts/:name",
     describeRoute({
-      summary: "Store a script",
+      summary: "Create or replace a script",
       description:
         "Validates, then stores. An invalid script never lands, so every row in the table type-checks " +
-        "against its catalog snapshot — the runner never has to ask whether a script is coherent.",
+        "against its catalog snapshot — the runner never has to ask whether a script is coherent. " +
+        "Idempotent on `name`: writing the same name again replaces it and bumps `version`.",
       tags: ["scripts"],
       responses: {
-        201: json(ScriptSchema, "Stored."),
-        409: json(ErrorResponseSchema, "That name is taken."),
+        200: json(ScriptSchema, "Replaced an existing script."),
+        201: json(ScriptSchema, "Stored a new script."),
         422: json(ValidationSchema, "The script did not validate; nothing was stored."),
       },
     }),
-    validator("json", CreateScriptSchema),
+    validator("json", UpsertScriptSchema),
     async (c) => {
-      const result = await storeScript(c.req.valid("json"));
-      if ("conflict" in result) return c.json({ error: "name_taken", message: result.conflict }, 409);
+      const { description, ...params } = c.req.valid("json");
+      const result = await upsertScript({
+        name: c.req.param("name"),
+        description,
+        params: params as never,
+      });
       if (!result.ok) return c.json(result.validation, 422);
-      return c.json(await present(result.script), 201);
+      return c.json(await present(result.script), result.created ? 201 : 200);
     },
   )
   .get(
@@ -259,9 +266,13 @@ export const routes = new Hono()
     },
   )
   .get(
-    "/scripts/:id",
+    "/scripts/:name",
     describeRoute({
       summary: "Read a script",
+      description:
+        "Everything that went in: the `run` method, the `input`/`output`/`expect` schemas as submitted, " +
+        "the derived grant, and the assembled module. Straight out of the database — nothing is " +
+        "re-derived from source on read.",
       tags: ["scripts"],
       responses: {
         200: json(ScriptSchema, "The script."),
@@ -269,37 +280,38 @@ export const routes = new Hono()
       },
     }),
     async (c) => {
-      const row = await findScript(c.req.param("id"));
+      const row = await findScript(c.req.param("name"));
       if (!row) return c.json({ error: "not_found", message: "No such script." }, 404);
       return c.json(await present(row), 200);
     },
   )
-  .put(
-    "/scripts/:id",
+  .get(
+    "/scripts/:name/types",
     describeRoute({
-      summary: "Replace a script's source",
-      description: "Same gate as creating one: it validates or nothing changes.",
+      summary: "TypeScript declarations for this script's toolkits",
+      description:
+        "The ambient declarations covering exactly the toolkits this script destructured — what " +
+        "`github` is, and what each of its tools takes and returns. Same text `POST /api/validate` " +
+        "compiles against.",
       tags: ["scripts"],
       responses: {
-        200: json(ScriptSchema, "Updated; `version` is bumped."),
+        200: { description: "A TypeScript declaration file.", content: { "text/plain": { schema: { type: "string" } } } },
         404: json(ErrorResponseSchema, "No such script."),
-        422: json(ValidationSchema, "The script did not validate; nothing changed."),
       },
     }),
-    validator("json", UpdateScriptSchema),
     async (c) => {
-      const row = await findScript(c.req.param("id"));
+      const row = await findScript(c.req.param("name"));
       if (!row) return c.json({ error: "not_found", message: "No such script." }, 404);
 
-      const body = c.req.valid("json");
-      const result = await storeScript({ ...body, name: row.name, replacing: row });
-      if ("conflict" in result) return c.json({ error: "name_taken", message: result.conflict }, 409);
-      if (!result.ok) return c.json(result.validation, 422);
-      return c.json(await present(result.script), 200);
+      const catalog = await loadCatalog();
+      const scoped = row.namespaces.flatMap((namespace) => catalog.byNamespace.get(namespace) ?? []);
+      c.header("Content-Type", "text/plain; charset=utf-8");
+      c.header("X-Catalog-Snapshot", catalog.snapshotId);
+      return c.body(generateTypes(scoped, catalog.nameMap).source, 200);
     },
   )
   .delete(
-    "/scripts/:id",
+    "/scripts/:name",
     describeRoute({
       summary: "Delete a script",
       tags: ["scripts"],
@@ -311,14 +323,14 @@ export const routes = new Hono()
     async (c) => {
       const [deleted] = await db
         .delete(scripts)
-        .where(eq(scripts.id, c.req.param("id")))
+        .where(eq(scripts.name, c.req.param("name")))
         .returning({ id: scripts.id });
       if (!deleted) return c.json({ error: "not_found", message: "No such script." }, 404);
       return c.json({ deleted: deleted.id }, 200);
     },
   )
   .post(
-    "/scripts/:id/run",
+    "/scripts/:name/run",
     describeRoute({
       summary: "Run a script",
       description:
@@ -337,7 +349,7 @@ export const routes = new Hono()
     }),
     validator("json", RunRequestSchema),
     async (c) => {
-      const script = await findScript(c.req.param("id"));
+      const script = await findScript(c.req.param("name"));
       if (!script) return c.json({ error: "not_found", message: "No such script." }, 404);
 
       const { input, userId } = c.req.valid("json");
@@ -370,8 +382,9 @@ export const routes = new Hono()
     async (c) => c.json(await revalidateAll(), 200),
   );
 
-async function findScript(id: string) {
-  const [row] = await db.select().from(scripts).where(eq(scripts.id, id));
+/** Scripts are addressed by name; `id` stays internal, for run records to point at. */
+async function findScript(name: string) {
+  const [row] = await db.select().from(scripts).where(eq(scripts.name, name));
   return row;
 }
 
@@ -380,10 +393,15 @@ function describeScript(row: ScriptRow, snapshotId: string) {
     id: row.id,
     name: row.name,
     description: row.description,
-    source: row.source,
+    run: row.run,
+    input: row.inputSchema,
+    output: row.outputSchema,
+    expect: row.expectSchemas,
     version: row.version,
     grant: [...new Set(Object.values(row.toolGrant))].sort(),
+    paths: row.toolGrant,
     namespaces: row.namespaces,
+    source: row.source,
     snapshotId: row.snapshotId,
     stale: row.snapshotId !== snapshotId,
     createdAt: row.createdAt.toISOString(),

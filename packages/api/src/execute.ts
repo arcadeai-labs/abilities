@@ -17,34 +17,44 @@ import { compileScript } from "./compile";
 import { db } from "./db";
 import { type Spec, validateSpec, type Violation } from "./schema-dsl";
 import { runs, type ScriptRow, scripts } from "./schema";
+import type { ScriptParams } from "./assemble";
 import { type Contract, validateScript, type ValidationResult } from "./validate";
 
 const id = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 24)}`;
 const hash = (text: string) => createHash("sha256").update(text).digest("hex").slice(0, 32);
 
 export type StoreResult =
-  | { ok: true; script: ScriptRow }
-  | { ok: false; validation: ValidationResult }
-  | { ok: false; conflict: string };
+  | { ok: true; script: ScriptRow; created: boolean }
+  | { ok: false; validation: ValidationResult };
 
-/** Validates, then stores. Never the other way round. */
-export async function storeScript(input: {
+/**
+ * Validates, then stores. Never the other way round — which is what lets the
+ * `scripts` table hold an invariant rather than a pile of text.
+ *
+ * Upsert by name: the name is the key an author already has, so writing the same
+ * script twice updates it instead of failing, and the caller needs no read first.
+ */
+export async function upsertScript(input: {
   name: string;
   description?: string | null;
-  source: string;
-  /** When set, replaces that script instead of creating one. */
-  replacing?: ScriptRow;
+  params: ScriptParams;
 }): Promise<StoreResult> {
-  const validation = await validateScript(input.source);
-  if (!validation.ok || !validation.contract) return { ok: false, validation };
+  const validation = await validateScript(input.params);
+  if (!validation.ok || !validation.contract || !validation.source) {
+    return { ok: false, validation };
+  }
 
   const now = new Date();
   const row = {
     name: input.name,
     description: input.description ?? null,
-    source: input.source,
-    compiled: compileScript(input.source),
-    sourceHash: hash(input.source),
+    run: input.params.run,
+    inputSchema: input.params.input,
+    outputSchema: input.params.output,
+    expectSchemas: (input.params.expect ?? {}) as Record<string, unknown>,
+    source: validation.source,
+    compiled: compileScript(validation.source),
+    sourceHash: hash(validation.source),
     toolGrant: validation.paths,
     namespaces: validation.namespaces,
     contract: validation.contract,
@@ -52,23 +62,25 @@ export async function storeScript(input: {
     updatedAt: now,
   };
 
-  if (input.replacing) {
+  const [existing] = await db
+    .select({ id: scripts.id, version: scripts.version })
+    .from(scripts)
+    .where(eq(scripts.name, input.name));
+
+  if (existing) {
     const [updated] = await db
       .update(scripts)
-      .set({ ...row, version: input.replacing.version + 1 })
-      .where(eq(scripts.id, input.replacing.id))
+      .set({ ...row, version: existing.version + 1 })
+      .where(eq(scripts.id, existing.id))
       .returning();
-    return { ok: true, script: updated! };
+    return { ok: true, script: updated!, created: false };
   }
-
-  const existing = await db.select({ id: scripts.id }).from(scripts).where(eq(scripts.name, input.name));
-  if (existing.length > 0) return { ok: false, conflict: `A script named \`${input.name}\` already exists.` };
 
   const [created] = await db
     .insert(scripts)
     .values({ ...row, id: id("scr"), version: 1, createdAt: now })
     .returning();
-  return { ok: true, script: created! };
+  return { ok: true, script: created!, created: true };
 }
 
 export type RunOutcome =
@@ -256,7 +268,12 @@ export async function revalidateAll(): Promise<{
   const stale: { id: string; name: string; diagnostics: number; firstError: string | null }[] = [];
 
   for (const row of rows) {
-    const validation = await validateScript(row.source);
+    const validation = await validateScript({
+      input: row.inputSchema as never,
+      output: row.outputSchema as never,
+      expect: row.expectSchemas as never,
+      run: row.run,
+    });
     if (validation.ok) {
       if (row.snapshotId !== catalog.snapshotId) {
         await db

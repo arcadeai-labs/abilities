@@ -22,6 +22,9 @@ const INDENT = "  ";
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const key = (name: string) => (IDENTIFIER.test(name) ? name : JSON.stringify(name));
 
+/** Drops one indent level; the emitted declarations are no longer inside a module block. */
+const dedent = (line: string) => (line.startsWith(INDENT) ? line.slice(INDENT.length) : line);
+
 /** Wraps in parens only when appending `[]` would otherwise bind too loosely. */
 const arrayOf = (element: string) =>
   /[|&]/.test(element) || element.includes("\n") ? `Array<${element}>` : `${element}[]`;
@@ -153,109 +156,109 @@ export type GeneratedTypes = {
  * anyway — owning the surface keeps both cheap.
  */
 const PRELUDE = String.raw`  /** Built by ${"`z`"}; read back out with ${"`Infer`"}. */
-  export interface Schema<T> {
-    readonly __out: T;
-  }
+interface Schema<T> {
+  readonly __out: T;
+}
 
-  interface Chainable<T> extends Schema<T> {
-    /** Allows the value to be absent. Makes the surrounding object key optional. */
-    optional(): Schema<T | undefined>;
-    nullable(): Schema<T | null>;
-    describe(text: string): this;
-  }
+interface Chainable<T> extends Schema<T> {
+  /** Allows the value to be absent. Makes the surrounding object key optional. */
+  optional(): Schema<T | undefined>;
+  nullable(): Schema<T | null>;
+  describe(text: string): this;
+}
 
-  export interface StringSchema extends Chainable<string> {
-    min(length: number): StringSchema;
-    max(length: number): StringSchema;
-    regex(pattern: RegExp): StringSchema;
-    email(): StringSchema;
-    url(): StringSchema;
-  }
-  export interface NumberSchema extends Chainable<number> {
-    int(): NumberSchema;
-    min(value: number): NumberSchema;
-    max(value: number): NumberSchema;
-  }
-  export interface BooleanSchema extends Chainable<boolean> {}
-  export interface UnknownSchema extends Chainable<unknown> {}
-  export interface ArraySchema<T> extends Chainable<T[]> {
-    min(length: number): ArraySchema<T>;
-    max(length: number): ArraySchema<T>;
-  }
-  export interface EnumSchema<V extends string> extends Chainable<V> {}
-  export interface RecordSchema<T> extends Chainable<Record<string, T>> {}
-  export interface ObjectSchema<S extends Record<string, Schema<unknown>>>
-    extends Chainable<Expand<ShapeOut<S>>> {
-    readonly shape: S;
-  }
+interface StringSchema extends Chainable<string> {
+  min(length: number): StringSchema;
+  max(length: number): StringSchema;
+  regex(pattern: RegExp): StringSchema;
+  email(): StringSchema;
+  url(): StringSchema;
+}
+interface NumberSchema extends Chainable<number> {
+  int(): NumberSchema;
+  min(value: number): NumberSchema;
+  max(value: number): NumberSchema;
+}
+interface BooleanSchema extends Chainable<boolean> {}
+interface UnknownSchema extends Chainable<unknown> {}
+interface ArraySchema<T> extends Chainable<T[]> {
+  min(length: number): ArraySchema<T>;
+  max(length: number): ArraySchema<T>;
+}
+interface EnumSchema<V extends string> extends Chainable<V> {}
+interface RecordSchema<T> extends Chainable<Record<string, T>> {}
+interface ObjectSchema<S extends Record<string, Schema<unknown>>>
+  extends Chainable<Expand<ShapeOut<S>>> {
+  readonly shape: S;
+}
 
-  export type Infer<S> = S extends Schema<infer T> ? T : never;
+type Infer<S> = S extends Schema<infer T> ? T : never;
 
-  type OptionalKeys<S> = {
-    [K in keyof S]-?: undefined extends Infer<S[K]> ? K : never;
-  }[keyof S];
-  type ShapeOut<S extends Record<string, Schema<unknown>>> = {
-    [K in Exclude<keyof S, OptionalKeys<S>>]: Infer<S[K]>;
-  } & { [K in OptionalKeys<S>]?: Infer<S[K]> };
-  type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
+type OptionalKeys<S> = {
+  [K in keyof S]-?: undefined extends Infer<S[K]> ? K : never;
+}[keyof S];
+type ShapeOut<S extends Record<string, Schema<unknown>>> = {
+  [K in Exclude<keyof S, OptionalKeys<S>>]: Infer<S[K]>;
+} & { [K in OptionalKeys<S>]?: Infer<S[K]> };
+type Expand<T> = T extends infer O ? { [K in keyof O]: O[K] } : never;
 
-  export const z: {
-    string(): StringSchema;
-    number(): NumberSchema;
-    /** Shorthand for ${"`z.number().int()`"}. */
-    int(): NumberSchema;
-    boolean(): BooleanSchema;
-    /** An opaque value. Use when a shape genuinely isn't known. */
-    unknown(): UnknownSchema;
-    object<S extends Record<string, Schema<unknown>>>(shape: S): ObjectSchema<S>;
-    array<S extends Schema<unknown>>(element: S): ArraySchema<Infer<S>>;
-    enum<const V extends readonly string[]>(values: V): EnumSchema<V[number]>;
-    record<S extends Schema<unknown>>(value: S): RecordSchema<Infer<S>>;
-    literal<const V extends string | number | boolean>(value: V): Chainable<V>;
-  };
+declare const z: {
+  string(): StringSchema;
+  number(): NumberSchema;
+  /** Shorthand for ${"`z.number().int()`"}. */
+  int(): NumberSchema;
+  boolean(): BooleanSchema;
+  /** An opaque value. Use when a shape genuinely isn't known. */
+  unknown(): UnknownSchema;
+  object<S extends Record<string, Schema<unknown>>>(shape: S): ObjectSchema<S>;
+  array<S extends Schema<unknown>>(element: S): ArraySchema<Infer<S>>;
+  enum<const V extends readonly string[]>(values: V): EnumSchema<V[number]>;
+  record<S extends Schema<unknown>>(value: S): RecordSchema<Infer<S>>;
+  literal<const V extends string | number | boolean>(value: V): Chainable<V>;
+};
 
-  /** Every tool this snapshot exposes. */
-  export type ToolPath = keyof ToolOutputs;
+/** Every tool this snapshot exposes. */
+type ToolPath = keyof ToolOutputs;
 
-  /** Shapes declared through ${"`expect`"} win over whatever the catalog says. */
-  type Expected = Partial<Record<ToolPath, Schema<unknown>>>;
-  type Resolve<P extends ToolPath, E extends Expected> = P extends keyof E
-    ? Infer<E[P]>
-    : ToolOutputs[P];
+/** Shapes declared through ${"`expect`"} win over whatever the catalog says. */
+type Expected = Partial<Record<ToolPath, Schema<unknown>>>;
+type Resolve<P extends ToolPath, E extends Expected> = P extends keyof E
+  ? Infer<E[P]>
+  : ToolOutputs[P];
 
+/**
+ * Second argument to ${"`run`"}. Destructuring it is what grants capability: the
+ * toolkits you name are the only ones the sandbox will call, so
+ * ${"`async run(input, { github, log })`"} can reach GitHub and nothing else.
+ */
+type Ctx<E extends Expected = {}> = Toolkits<E> & {
+  /** Appended to the run's ${"`logs`"}. */
+  log(...values: unknown[]): void;
+};
+
+type ScriptConfig<
+  I extends Schema<unknown>,
+  O extends Schema<unknown>,
+  E extends Expected,
+> = {
+  /** Validated against the caller's ${"`input`"} before ${"`run`"} is entered. */
+  input: I;
+  /** Validated against the return value before the response is sent. */
+  output: O;
   /**
-   * Second argument to ${"`run`"}. Destructuring it is what grants capability: the
-   * toolkits you name are the only ones the sandbox will call, so
-   * ${"`async run(input, { github, log })`"} can reach GitHub and nothing else.
+   * Shapes for tools whose output the catalog leaves unspecified. Unlike a
+   * catalog shape, an ${"`expect`"} is an assertion by the author, so a mismatch at
+   * runtime fails the run.
    */
-  export type Ctx<E extends Expected = {}> = Toolkits<E> & {
-    /** Appended to the run's ${"`logs`"}. */
-    log(...values: unknown[]): void;
-  };
+  expect?: E;
+  run(input: Infer<I>, ctx: Ctx<E>): Promise<Infer<O>>;
+};
 
-  export type ScriptConfig<
-    I extends Schema<unknown>,
-    O extends Schema<unknown>,
-    E extends Expected,
-  > = {
-    /** Validated against the caller's ${"`input`"} before ${"`run`"} is entered. */
-    input: I;
-    /** Validated against the return value before the response is sent. */
-    output: O;
-    /**
-     * Shapes for tools whose output the catalog leaves unspecified. Unlike a
-     * catalog shape, an ${"`expect`"} is an assertion by the author, so a mismatch at
-     * runtime fails the run.
-     */
-    expect?: E;
-    run(input: Infer<I>, ctx: Ctx<E>): Promise<Infer<O>>;
-  };
-
-  export function defineScript<
-    I extends Schema<unknown>,
-    O extends Schema<unknown>,
-    const E extends Expected = {},
-  >(config: ScriptConfig<I, O, E>): ScriptConfig<I, O, E>;
+declare function defineScript<
+  I extends Schema<unknown>,
+  O extends Schema<unknown>,
+  const E extends Expected = {},
+>(config: ScriptConfig<I, O, E>): ScriptConfig<I, O, E>;
 `;
 
 /**
@@ -325,27 +328,31 @@ export function generateTypes(
     );
   }
 
+  // A file with no top-level import or export is a *global* declaration file, so
+  // everything below is ambient. That is deliberate: a script then needs no import
+  // to reach `z`, `defineScript` or its toolkits, which is what lets the policy
+  // pass reject every import outright rather than allow-listing one.
   const header = [
     "// Generated from the mirrored Arcade catalog. Do not edit.",
     `// ${tools.length} tool(s) across ${emittedNamespaces} toolkit(s); ` +
       `${typedOutputs} declare an output shape, ${tools.length - typedOutputs} return \`unknown\`.`,
+    "//",
+    "// These declarations are ambient — a script imports nothing.",
     ...nameMap.warnings.map((warning) => `// note: ${warning}`),
     "",
-    'declare module "arcade:runtime" {',
   ];
 
   const source = [
     ...header,
     PRELUDE,
-    `${INDENT}/** Declared output shape per tool, or \`unknown\` where the catalog is silent. */`,
-    `${INDENT}export interface ToolOutputs {`,
-    ...outputs,
-    `${INDENT}}`,
-    "",
-    `${INDENT}export type Toolkits<E extends Expected = {}> = {`,
-    ...namespaces,
-    `${INDENT}};`,
+    "/** Declared output shape per tool, or `unknown` where the catalog is silent. */",
+    "interface ToolOutputs {",
+    ...outputs.map(dedent),
     "}",
+    "",
+    "type Toolkits<E extends Expected = {}> = {",
+    ...namespaces.map(dedent),
+    "};",
     "",
   ].join("\n");
 

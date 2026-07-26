@@ -13,6 +13,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { assemble } from "./assemble";
 import { compileScript } from "./compile";
 import { runInSandbox, type SandboxOptions } from "./sandbox";
 import { realBridge, requireArcadeKey } from "./testing";
@@ -181,20 +182,22 @@ describe("limits", () => {
 
 describe("results", () => {
   it("runs a compiled script and reports its logs and calls", async () => {
-    const source = `
-import { defineScript, z } from "arcade:runtime";
-export default defineScript({
-  input: z.object({ a: z.string(), b: z.string() }),
-  output: z.object({ sum: z.string() }),
-  async run(input, { math, log }) {
-    const sum = await math.add({ a: input.a, b: input.b });
-    log("added", input.a, input.b);
-    return { sum };
-  },
-});
-`;
+    const assembly = assemble({
+      input: {
+        type: "object",
+        properties: { a: { type: "string" }, b: { type: "string" } },
+        required: ["a", "b"],
+      },
+      output: { type: "object", properties: { sum: { type: "string" } }, required: ["sum"] },
+      run: `async run(input, { math, log }) {
+  const sum = await math.add({ a: input.a, b: input.b });
+  log("added", input.a, input.b);
+  return { sum };
+}`,
+    });
+    if (!assembly.ok) throw new Error("fixture failed to assemble");
 
-    const outcome = await run(compileScript(source), {
+    const outcome = await run(compileScript(assembly.assembled.source), {
       grant: ADD,
       input: { a: "20", b: "22" },
     });

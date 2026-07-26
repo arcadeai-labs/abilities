@@ -1,12 +1,14 @@
 /**
  * Decides whether a script is valid, without running any of it.
  *
- * Three passes, in order, because each depends on the last:
- *  1. {@link checkPolicy} on the bare syntax tree — closes the module graph and
- *     reads the capability grant off `run`'s destructured context parameter.
- *  2. codegen for exactly the toolkits that grant names, so the compiler sees the
+ * Four passes, in order, because each depends on the last:
+ *  1. {@link assemble} turns the submitted contract and `run` method into a module.
+ *  2. {@link checkAssembly} and {@link checkPolicy} on the bare syntax tree — they
+ *     confirm the spliced method really is one method, close the module graph, and
+ *     read the capability grant off `run`'s destructured context parameter.
+ *  3. codegen for exactly the toolkits that grant names, so the compiler sees the
  *     tools the script asked for and nothing else.
- *  3. the type checker, over an in-memory file system holding only `lib.es2022`,
+ *  4. the type checker, over an in-memory file system holding only `lib.es2022`,
  *     the generated declarations and the script. No `@types/node`, no DOM.
  *
  * Passing means the script conforms to its declared contract and can only reach
@@ -17,14 +19,20 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import ts from "typescript";
+import {
+  assemble,
+  checkAssembly,
+  type Contract,
+  type ScriptParams,
+  toAuthorCoordinates,
+} from "./assemble";
 import { loadCatalog } from "./catalog";
 import { generateTypes } from "./codegen";
-import { checkPolicy, type Diagnostic, RUNTIME_MODULE } from "./policy";
-import { DslError, interpretSpec, type Spec } from "./schema-dsl";
+import { checkPolicy, type Diagnostic } from "./policy";
 import { hasTypedOutput } from "./value-schema";
 
-/** A script long enough to be a denial-of-service attempt rather than glue code. */
-const MAX_SOURCE_BYTES = 64 * 1024;
+/** A `run` method long enough to be a denial-of-service attempt rather than glue code. */
+const MAX_RUN_BYTES = 64 * 1024;
 const MAX_NODES = 20_000;
 
 const SCRIPT_PATH = "/script.ts";
@@ -33,8 +41,6 @@ const LIB = "lib.es2022.d.ts";
 const LIB_DIR = dirname(ts.getDefaultLibFilePath({}));
 
 export type ToolCoverage = { path: string; qualifiedName: string; typed: boolean };
-
-export type Contract = { input: Spec; output: Spec; expect: Record<string, Spec> };
 
 export type ValidationResult = {
   ok: boolean;
@@ -49,6 +55,8 @@ export type ValidationResult = {
   /** Which granted tools declare an output shape upstream. */
   outputCoverage: ToolCoverage[];
   contract: Contract | null;
+  /** The assembled module, for storage. Null when assembly failed. */
+  source: string | null;
 };
 
 const point = (line: number, column: number) => ({ line, column });
@@ -137,92 +145,7 @@ function closest(target: string, candidates: Iterable<string>): string | undefin
   return best && best.distance <= Math.max(2, Math.floor(target.length / 3)) ? best.name : undefined;
 }
 
-/** Pulls `input`, `output` and `expect` out of the config without evaluating it. */
-function readContract(file: ts.SourceFile): { contract: Contract | null; diagnostics: Diagnostic[] } {
-  const diagnostics: Diagnostic[] = [];
-  const at = (node: ts.Node) => {
-    const start = file.getLineAndCharacterOfPosition(node.getStart(file));
-    const end = file.getLineAndCharacterOfPosition(node.getEnd());
-    return { start: point(start.line + 1, start.character + 1), end: point(end.line + 1, end.character + 1) };
-  };
-
-  const exportAssignment = file.statements.find(ts.isExportAssignment);
-  const call = exportAssignment && ts.isCallExpression(exportAssignment.expression) ? exportAssignment.expression : undefined;
-  const config = call?.arguments[0];
-  if (!config || !ts.isObjectLiteralExpression(config)) return { contract: null, diagnostics };
-
-  const property = (name: string) =>
-    config.properties.find(
-      (candidate): candidate is ts.PropertyAssignment =>
-        ts.isPropertyAssignment(candidate) &&
-        ts.isIdentifier(candidate.name) &&
-        candidate.name.text === name,
-    );
-
-  const readSpec = (name: string): Spec | null => {
-    const assignment = property(name);
-    if (!assignment) return null;
-    try {
-      return interpretSpec(assignment.initializer).spec;
-    } catch (error) {
-      if (error instanceof DslError) {
-        diagnostics.push({
-          category: "contract",
-          code: "contract/unreadable-schema",
-          severity: "error",
-          message: `\`${name}\`: ${error.message}`,
-          ...at(error.node),
-        });
-        return null;
-      }
-      throw error;
-    }
-  };
-
-  const input = readSpec("input");
-  const output = readSpec("output");
-
-  const expect: Record<string, Spec> = {};
-  const expectAssignment = property("expect");
-  if (expectAssignment) {
-    if (!ts.isObjectLiteralExpression(expectAssignment.initializer)) {
-      diagnostics.push({
-        category: "contract",
-        code: "contract/unreadable-expect",
-        severity: "error",
-        message: "`expect` must be an object literal mapping tool paths to schemas.",
-        ...at(expectAssignment.initializer),
-      });
-    } else {
-      for (const entry of expectAssignment.initializer.properties) {
-        if (!ts.isPropertyAssignment(entry)) continue;
-        const path = ts.isStringLiteralLike(entry.name)
-          ? entry.name.text
-          : ts.isIdentifier(entry.name)
-            ? entry.name.text
-            : null;
-        if (path === null) continue;
-        try {
-          expect[path] = interpretSpec(entry.initializer).spec;
-        } catch (error) {
-          if (!(error instanceof DslError)) throw error;
-          diagnostics.push({
-            category: "contract",
-            code: "contract/unreadable-schema",
-            severity: "error",
-            message: `\`expect["${path}"]\`: ${error.message}`,
-            ...at(error.node),
-          });
-        }
-      }
-    }
-  }
-
-  if (!input || !output) return { contract: null, diagnostics };
-  return { contract: { input, output, expect }, diagnostics };
-}
-
-export async function validateScript(source: string): Promise<ValidationResult> {
+export async function validateScript(params: ScriptParams): Promise<ValidationResult> {
   const catalog = await loadCatalog();
   const empty: ValidationResult = {
     ok: false,
@@ -233,9 +156,10 @@ export async function validateScript(source: string): Promise<ValidationResult> 
     paths: {},
     outputCoverage: [],
     contract: null,
+    source: null,
   };
 
-  if (Buffer.byteLength(source, "utf8") > MAX_SOURCE_BYTES) {
+  if (typeof params.run === "string" && Buffer.byteLength(params.run, "utf8") > MAX_RUN_BYTES) {
     return {
       ...empty,
       diagnostics: [
@@ -243,13 +167,18 @@ export async function validateScript(source: string): Promise<ValidationResult> 
           category: "policy",
           code: "policy/source-too-large",
           severity: "error",
-          message: `A script may be at most ${MAX_SOURCE_BYTES / 1024}KiB.`,
+          message: `\`run\` may be at most ${MAX_RUN_BYTES / 1024}KiB.`,
           start: point(1, 1),
           end: point(1, 1),
         },
       ],
     };
   }
+
+  // ── 1. assemble ──────────────────────────────────────────────────────────
+  const assembly = assemble(params);
+  if (!assembly.ok) return { ...empty, diagnostics: assembly.diagnostics };
+  const { source, contract, runLineOffset } = assembly.assembled;
 
   const file = ts.createSourceFile(SCRIPT_PATH, source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
 
@@ -269,31 +198,31 @@ export async function validateScript(source: string): Promise<ValidationResult> 
     };
   }
 
-  // ── 1. policy and the grant ──────────────────────────────────────────────
+  // ── 2. shape and policy ──────────────────────────────────────────────────
+  const structural = checkAssembly(file);
   const policy = checkPolicy(file);
-  const contract = readContract(file);
-  const diagnostics: Diagnostic[] = [...policy.diagnostics, ...contract.diagnostics];
+  const raw: Diagnostic[] = [...structural, ...policy.diagnostics];
 
   const known = new Set(catalog.nameMap.namespaces.keys());
   const namespaces = policy.namespaces.filter((namespace) => {
     if (known.has(namespace)) return true;
     const suggestion = closest(namespace, known);
-    diagnostics.push({
+    raw.push({
       category: "policy",
       code: "policy/unknown-toolkit",
       severity: "error",
       message: `No toolkit \`${namespace}\` in this catalog snapshot.${suggestion ? ` Did you mean \`${suggestion}\`?` : ""}`,
-      start: point(1, 1),
-      end: point(1, 1),
+      start: point(runLineOffset + 1, 1),
+      end: point(runLineOffset + 1, 1),
     });
     return false;
   });
 
-  // ── 2. types for exactly those toolkits ──────────────────────────────────
+  // ── 3. types for exactly those toolkits ──────────────────────────────────
   const scoped = namespaces.flatMap((namespace) => catalog.byNamespace.get(namespace) ?? []);
   const generated = generateTypes(scoped, catalog.nameMap);
 
-  // ── 3. the type check ────────────────────────────────────────────────────
+  // ── 4. the type check ────────────────────────────────────────────────────
   const files = new Map([
     [SCRIPT_PATH, source],
     [TYPES_PATH, generated.source],
@@ -312,7 +241,7 @@ export async function validateScript(source: string): Promise<ValidationResult> 
     const start = diagnostic.start ?? 0;
     const from = scriptFile.getLineAndCharacterOfPosition(start);
     const to = scriptFile.getLineAndCharacterOfPosition(start + (diagnostic.length ?? 0));
-    diagnostics.push({
+    raw.push({
       category: "type",
       code: `TS${diagnostic.code}`,
       severity: diagnostic.category === ts.DiagnosticCategory.Error ? "error" : "warning",
@@ -321,6 +250,10 @@ export async function validateScript(source: string): Promise<ValidationResult> 
       end: point(to.line + 1, to.character + 1),
     });
   }
+
+  // Everything above is in assembled-module coordinates; the author only ever saw
+  // their own `run` method.
+  const diagnostics = raw.map((diagnostic) => toAuthorCoordinates(diagnostic, runLineOffset));
 
   // ── the grant, resolved ──────────────────────────────────────────────────
   const paths: Record<string, string> = {};
@@ -340,6 +273,20 @@ export async function validateScript(source: string): Promise<ValidationResult> 
     });
   }
 
+  // An `expect` for a tool the script never calls is a stale declaration; say so
+  // rather than silently ignoring it.
+  for (const path of Object.keys(contract.expect)) {
+    if (paths[path]) continue;
+    diagnostics.push({
+      category: "contract",
+      code: "contract/unused-expect",
+      severity: "warning",
+      message: `\`expect["${path}"]\` declares a shape for a tool this script never calls.`,
+      start: point(1, 1),
+      end: point(1, 1),
+    });
+  }
+
   const ok = diagnostics.every((diagnostic) => diagnostic.severity !== "error");
 
   return {
@@ -350,8 +297,9 @@ export async function validateScript(source: string): Promise<ValidationResult> 
     grant: [...new Set(Object.values(paths))].sort(),
     paths,
     outputCoverage: outputCoverage.sort((a, b) => a.path.localeCompare(b.path)),
-    contract: contract.contract,
+    contract,
+    source,
   };
 }
 
-export { RUNTIME_MODULE };
+export type { Contract, ScriptParams };

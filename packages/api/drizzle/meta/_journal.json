@@ -15,6 +15,13 @@
       "when": 1784971184119,
       "tag": "0001_tired_silver_surfer",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785036061931,
+      "tag": "0002_next_ultimo",
+      "breakpoints": true
     }
   ]
 }
