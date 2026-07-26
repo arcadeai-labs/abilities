@@ -549,7 +549,9 @@ const present = async (row: ScriptRow) =>
  */
 export const app = new Hono()
   .route("/api", routes)
-  // A UI message stream, not a catalog operation — see ./agent.
+  // A UI message stream, not a catalog operation — see ./agent. Tools come from
+  // `/api/mcp` via createMCPClient, so the agent and every other MCP client share
+  // one derived list.
   .post("/api/chat", agentHandler)
   .all(
     "/api/mcp",
