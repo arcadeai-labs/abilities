@@ -122,11 +122,11 @@ describe("argument schemas", () => {
     expect(input?.required?.sort()).toEqual(["input", "name", "output", "run"])
   })
 
-  it("asks upsert authors to bake input defaults into run", () => {
+  it("asks upsert authors to embed defaults in the input JSON Schema", () => {
     const tool = tools.get("upsert_script")
-    expect(tool?.description).toMatch(/bake reasonable defaults/i)
+    expect(tool?.description).toMatch(/embed a reasonable `default`/i)
     expect(tool?.inputSchema.properties?.input?.description).toMatch(
-      /bake defaults into `run`/i
+      /embed a reasonable `default`/i
     )
   })
 

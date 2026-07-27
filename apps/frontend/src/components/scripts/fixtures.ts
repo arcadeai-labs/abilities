@@ -27,9 +27,9 @@ const summarizeIssue: ScriptView = {
   input: {
     type: "object",
     properties: {
-      owner: { type: "string" },
-      repo: { type: "string" },
-      number: { type: "integer" },
+      owner: { type: "string", default: "arcadeai" },
+      repo: { type: "string", default: "arcade-ai" },
+      number: { type: "integer", default: 481 },
     },
     required: ["owner", "repo", "number"],
   },
@@ -76,7 +76,7 @@ const triageInbox: ScriptView = {
 }`,
   input: {
     type: "object",
-    properties: { limit: { type: "integer", maximum: 100 } },
+    properties: { limit: { type: "integer", maximum: 100, default: 25 } },
   },
   output: {
     type: "object",
@@ -116,7 +116,10 @@ const addNumbers: ScriptView = {
 }`,
   input: {
     type: "object",
-    properties: { a: { type: "string" }, b: { type: "string" } },
+    properties: {
+      a: { type: "string", default: "2" },
+      b: { type: "string", default: "3" },
+    },
     required: ["a", "b"],
   },
   output: {
@@ -152,8 +155,12 @@ const digestReleases: ScriptView = {
   input: {
     type: "object",
     properties: {
-      owner: { type: "string" },
-      repos: { type: "array", items: { type: "string" } },
+      owner: { type: "string", default: "arcadeai" },
+      repos: {
+        type: "array",
+        items: { type: "string" },
+        default: ["arcade-ai", "arcadejs"],
+      },
     },
     required: ["owner", "repos"],
   },
