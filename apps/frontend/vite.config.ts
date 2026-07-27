@@ -39,6 +39,33 @@ const closeDb = (): Plugin => ({
   },
 })
 
+/**
+ * Nitro wraps `typescript` in a CJS interop helper that does not define
+ * `__filename` / `__dirname`. TypeScript reads both at module load, so the
+ * ESM chunk throws `ReferenceError` on Vercel and every /api request 500s.
+ * Inject ESM equivalents at the top of that chunk only.
+ */
+const typescriptCjsGlobals = (): Plugin => ({
+  name: "repo:typescript-cjs-globals",
+  apply: "build",
+  renderChunk(code, chunk) {
+    if (!chunk.fileName.includes("typescript")) return null
+    if (!code.includes("__filename") || code.includes("__repoTsFilename")) {
+      return null
+    }
+    return {
+      code:
+        `import { fileURLToPath as __repoFileURLToPath } from "node:url";\n` +
+        `import { dirname as __repoDirname } from "node:path";\n` +
+        `const __filename = __repoFileURLToPath(import.meta.url);\n` +
+        `const __dirname = __repoDirname(__filename);\n` +
+        `void "__repoTsFilename";\n` +
+        code,
+      map: null,
+    }
+  },
+})
+
 const config = defineConfig({
   server: {
     /**
@@ -65,6 +92,7 @@ const config = defineConfig({
   plugins: [
     rootEnv(),
     closeDb(),
+    typescriptCjsGlobals(),
     devtools(),
     tailwindcss(),
     tanstackStart(),
