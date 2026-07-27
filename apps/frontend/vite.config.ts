@@ -1,3 +1,5 @@
+import { cpSync } from "node:fs"
+import { join } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
@@ -6,6 +8,9 @@ import { nitro } from "nitro/vite"
 import { defineConfig, loadEnv, type Plugin } from "vite"
 
 const workspaceRoot = new URL("../../", import.meta.url).pathname
+
+/** SQL migrations `@repo/api` applies on seed — must ship with the serverless function. */
+const drizzleMigrations = join(workspaceRoot, "packages/api/drizzle")
 
 /**
  * This server hosts the API (see src/routes/api.$.ts), so it needs the API's
@@ -96,7 +101,26 @@ const config = defineConfig({
     devtools(),
     tailwindcss(),
     tanstackStart(),
-    nitro(),
+    // Seed/migrate read `packages/api/drizzle/meta/_journal.json` from disk. The
+    // API source is bundled, so those files are not traced in — copy them into
+    // the server output under the same relative path `MIGRATIONS_DIR` uses.
+    //
+    // Register via `modules` + `hook()`, not `hooks: { compiled }`: a config-level
+    // `compiled` replaces the Vercel preset's own compiled handler (which writes
+    // `.vercel/output/config.json`), and Vercel then looks for a `dist` folder.
+    nitro({
+      modules: [
+        (nitro) => {
+          nitro.hooks.hook("compiled", () => {
+            cpSync(
+              drizzleMigrations,
+              join(nitro.options.output.serverDir, "packages/api/drizzle"),
+              { recursive: true }
+            )
+          })
+        },
+      ],
+    }),
     viteReact(),
   ],
 })
