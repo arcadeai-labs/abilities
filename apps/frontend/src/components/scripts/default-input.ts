@@ -71,7 +71,9 @@ function defaultInputFromSchema(schema: unknown): unknown {
 
   const required = new Set(
     Array.isArray(schema.required)
-      ? schema.required.filter((name): name is string => typeof name === "string")
+      ? schema.required.filter(
+          (name): name is string => typeof name === "string"
+        )
       : []
   )
 
