@@ -2,12 +2,13 @@ import { existsSync } from "node:fs"
 import { dirname, join, resolve } from "node:path"
 
 /**
- * Three different processes open this package's data dir — the frontend dev
- * server (cwd `apps/frontend`), the standalone API (cwd `apps/backend`) and the
- * `sync`/`db:studio` scripts (cwd `packages/api`) — and they must all land on the
- * same PGlite directory. Relative paths can't do that, and `import.meta.url`
- * moves when the frontend bundles this source into `.output`, so the anchor is
- * the workspace root found by walking up from the cwd.
+ * Three different processes may open this package's embedded PGlite data dir —
+ * the frontend dev server (cwd `apps/frontend`), the standalone API (cwd
+ * `apps/backend`) and the `sync`/`db:studio` scripts (cwd `packages/api`) — and
+ * they must all land on the same directory when `POSTGRES_URL` is unset.
+ * Relative paths can't do that, and `import.meta.url` moves when the frontend
+ * bundles this source into `.output`, so the anchor is the workspace root found
+ * by walking up from the cwd.
  */
 function findWorkspaceRoot(from = process.cwd()): string {
   for (let dir = resolve(from); ; dir = dirname(dir)) {

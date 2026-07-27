@@ -7,8 +7,8 @@
     "rpc-demo": "tsx --env-file-if-exists=../../.env src/rpc-demo.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx migrate.ts",
-    "db:studio": "drizzle-kit studio",
+    "db:migrate": "tsx --env-file-if-exists=../../.env migrate.ts",
+    "db:studio": "node --env-file-if-exists=../../.env ./node_modules/drizzle-kit/bin.cjs studio",
     "test": "node --env-file-if-exists=../../.env node_modules/vitest/vitest.mjs run",
     "smoke": "tsx --env-file-if-exists=../../.env smoke.ts"
   },
@@ -38,6 +38,7 @@
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.32",
     "hono-openapi": "^1.3.1",
+    "postgres": "^3.4.9",
     "quickjs-emscripten-core": "0.32.0",
     "zod": "^4.4.3"
   }
