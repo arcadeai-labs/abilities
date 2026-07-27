@@ -1,11 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { PGlite } from "@electric-sql/pglite"
-import {
-  drizzle as drizzlePglite,
-  type PgliteDatabase,
-} from "drizzle-orm/pglite"
-import { migrate as migratePglite } from "drizzle-orm/pglite/migrator"
+import type { PgliteDatabase } from "drizzle-orm/pglite"
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js"
 import { migrate as migratePostgres } from "drizzle-orm/postgres-js/migrator"
 import postgres from "postgres"
@@ -155,6 +150,13 @@ function installCloseHooks(close: () => Promise<void>): void {
 }
 
 async function openPglite(): Promise<Handle> {
+  // Dynamic import: a static `@electric-sql/pglite` import loads WASM/data at
+  // module evaluation, which breaks Vercel even when `POSTGRES_URL` is set and
+  // this branch is never taken.
+  const { PGlite } = await import("@electric-sql/pglite")
+  const { drizzle: drizzlePglite } = await import("drizzle-orm/pglite")
+  const { migrate: migratePglite } = await import("drizzle-orm/pglite/migrator")
+
   const releaseOwner = claimDataDir()
   const client = await PGlite.create(DATA_DIR)
   const db = drizzlePglite({ client, schema })
@@ -188,6 +190,11 @@ function openPostgres(url: string): Handle {
 
 async function open(): Promise<Handle> {
   if (POSTGRES_URL) return openPostgres(POSTGRES_URL)
+  if (process.env.VERCEL) {
+    throw new Error(
+      "POSTGRES_URL is required on Vercel — PGlite is for local development only."
+    )
+  }
   return openPglite()
 }
 

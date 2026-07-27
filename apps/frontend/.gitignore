@@ -8,6 +8,7 @@ storybook-static
 .tanstack
 .wrangler
 .output
+.vercel
 .vinxi
 __unconfig*
 todos.json

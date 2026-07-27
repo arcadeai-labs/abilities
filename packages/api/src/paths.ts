@@ -9,16 +9,20 @@ import { dirname, join, resolve } from "node:path"
  * Relative paths can't do that, and `import.meta.url` moves when the frontend
  * bundles this source into `.output`, so the anchor is the workspace root found
  * by walking up from the cwd.
+ *
+ * On Vercel there is no `pnpm-workspace.yaml` in the function filesystem. Real
+ * Postgres (`POSTGRES_URL`) does not need the workspace root for the data dir;
+ * migrations are applied out-of-band. Falling back to cwd keeps module load from
+ * throwing before the Postgres branch can run.
  */
-function findWorkspaceRoot(from = process.cwd()): string {
+function findWorkspaceRoot(from = process.cwd()): string | undefined {
   for (let dir = resolve(from); ; dir = dirname(dir)) {
     if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir
-    if (dirname(dir) === dir)
-      throw new Error(`no pnpm-workspace.yaml above ${from}`)
+    if (dirname(dir) === dir) return undefined
   }
 }
 
-export const WORKSPACE_ROOT = findWorkspaceRoot()
+export const WORKSPACE_ROOT = findWorkspaceRoot() ?? resolve(process.cwd())
 
 /** One database for the whole workspace; `drizzle.config.ts` points here too. */
 export const DATA_DIR =
