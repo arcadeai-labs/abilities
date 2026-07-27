@@ -17,7 +17,14 @@ const drizzleMigrations = join(workspaceRoot, "packages/api/drizzle")
  * environment. Keeping it in the workspace-root .env means the embedded API and
  * `pnpm --filter @repo/api sync` read one file. TanStack Start loads
  * apps/frontend/.env itself and runs after this, so a local file still wins.
+ *
+ * Load at module eval *and* in `configResolved`: Vite only re-reads `.env` when
+ * the process starts, so after editing OIDC_* you must restart `pnpm dev`.
  */
+const mode =
+  process.env.NODE_ENV === "production" ? "production" : "development"
+Object.assign(process.env, loadEnv(mode, workspaceRoot, ""))
+
 const rootEnv = (): Plugin => ({
   name: "repo:root-env",
   enforce: "pre",
@@ -91,7 +98,7 @@ const config = defineConfig({
     // @repo/api is TypeScript source, so Vite has to transform it rather than hand
     // it to Node. PGlite ships WASM and postgres is a Node driver — both stay
     // plain Node imports.
-    noExternal: ["@repo/api"],
+    noExternal: ["@repo/api", "better-auth"],
     external: ["@electric-sql/pglite", "postgres"],
   },
   plugins: [

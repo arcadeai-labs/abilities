@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkbenchRouteImport } from './routes/_workbench'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as WorkbenchIndexRouteImport } from './routes/_workbench.index'
 import { Route as WorkbenchChatRouteImport } from './routes/_workbench.chat'
 import { Route as ApiSplatRouteImport } from './routes/api.$'
@@ -17,6 +18,11 @@ import { Route as WorkbenchScriptsNameRouteImport } from './routes/_workbench.sc
 
 const WorkbenchRoute = WorkbenchRouteImport.update({
   id: '/_workbench',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const WorkbenchIndexRoute = WorkbenchIndexRouteImport.update({
@@ -42,11 +48,13 @@ const WorkbenchScriptsNameRoute = WorkbenchScriptsNameRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof WorkbenchIndexRoute
+  '/login': typeof LoginRoute
   '/chat': typeof WorkbenchChatRoute
   '/api/$': typeof ApiSplatRoute
   '/scripts/$name': typeof WorkbenchScriptsNameRoute
 }
 export interface FileRoutesByTo {
+  '/login': typeof LoginRoute
   '/chat': typeof WorkbenchChatRoute
   '/api/$': typeof ApiSplatRoute
   '/': typeof WorkbenchIndexRoute
@@ -55,6 +63,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_workbench': typeof WorkbenchRouteWithChildren
+  '/login': typeof LoginRoute
   '/_workbench/chat': typeof WorkbenchChatRoute
   '/api/$': typeof ApiSplatRoute
   '/_workbench/': typeof WorkbenchIndexRoute
@@ -62,12 +71,13 @@ export interface FileRoutesById {
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/chat' | '/api/$' | '/scripts/$name'
+  fullPaths: '/' | '/login' | '/chat' | '/api/$' | '/scripts/$name'
   fileRoutesByTo: FileRoutesByTo
-  to: '/chat' | '/api/$' | '/' | '/scripts/$name'
+  to: '/login' | '/chat' | '/api/$' | '/' | '/scripts/$name'
   id:
     | '__root__'
     | '/_workbench'
+    | '/login'
     | '/_workbench/chat'
     | '/api/$'
     | '/_workbench/'
@@ -76,6 +86,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   WorkbenchRoute: typeof WorkbenchRouteWithChildren
+  LoginRoute: typeof LoginRoute
   ApiSplatRoute: typeof ApiSplatRoute
 }
 
@@ -86,6 +97,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof WorkbenchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_workbench/': {
@@ -137,6 +155,7 @@ const WorkbenchRouteWithChildren = WorkbenchRoute._addFileChildren(
 
 const rootRouteChildren: RootRouteChildren = {
   WorkbenchRoute: WorkbenchRouteWithChildren,
+  LoginRoute: LoginRoute,
   ApiSplatRoute: ApiSplatRoute,
 }
 export const routeTree = rootRouteImport

@@ -52,8 +52,9 @@ function RunPanel({
           />
         </InputGroup>
         <FieldDescription>
-          The Arcade end user. Every tool call is bounded by what they could
-          already do themselves.
+          The Arcade end user. Signed-in sessions fill this from your OIDC
+          account id; otherwise type an email or UUID. Every tool call is
+          bounded by what they could already do themselves.
         </FieldDescription>
       </Field>
 

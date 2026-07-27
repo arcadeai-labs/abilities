@@ -3,7 +3,7 @@ import { defineConfig } from "drizzle-kit"
 const url = process.env.POSTGRES_URL
 
 export default defineConfig({
-  schema: "./src/schema.ts",
+  schema: ["./src/schema.ts", "./src/auth-schema.ts"],
   out: "./drizzle",
   dialect: "postgresql",
   ...(url

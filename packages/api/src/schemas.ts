@@ -358,3 +358,21 @@ export const RevalidateResponseSchema = z
     ),
   })
   .meta({ id: "RevalidateResponse" })
+
+export const MeUserSchema = z
+  .object({
+    id: z.string(),
+    email: z.string(),
+    name: z.string(),
+    accountId: z.string(),
+    image: z.string().nullish(),
+  })
+  .meta({ id: "MeUser" })
+
+/** Always 200: auth off, signed out, or signed in. */
+export const MeResponseSchema = z
+  .object({
+    configured: z.boolean(),
+    user: MeUserSchema.nullable(),
+  })
+  .meta({ id: "MeResponse" })
