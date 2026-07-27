@@ -58,7 +58,7 @@ function RunPanel({
       </Field>
 
       <JsonField
-        description="Seeded from the input schema's defaults; checked against that schema before anything runs."
+        description="Starts empty — scripts bake their own defaults into run. Checked against the input schema before anything runs."
         disabled={disabled}
         id="run-input"
         label="Input"

@@ -37,8 +37,6 @@ export type JsonSchema = {
   maxItems?: number
   nullable?: boolean
   description?: string
-  /** Example value for tooling; stored verbatim, not applied by the validator. */
-  default?: unknown
 }
 
 export class JsonSchemaError extends Error {

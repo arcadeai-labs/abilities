@@ -197,14 +197,14 @@ export const ValidationSchema = z
 const JsonSchemaSchema = z
   .record(z.string(), z.unknown())
   .describe(
-    "A JSON Schema. Supported: type, enum, const, properties, required, items, additionalProperties, format, pattern, min/max, nullable, default."
+    "A JSON Schema. Supported: type, enum, const, properties, required, items, additionalProperties, format, pattern, min/max, nullable."
   )
 
 export const ScriptParamsSchema = z
   .object({
     input: JsonSchemaSchema.describe(
-      "Shape of the value `run` receives. Put a reasonable `default` on each property — the run UI " +
-        "seeds its payload from those."
+      "Shape of the value `run` receives. Prefer optional properties and bake defaults into `run` " +
+        "(for example `input.limit ?? 25`), so an empty payload still runs."
     ),
     output: JsonSchemaSchema.describe("Shape the return value must satisfy."),
     toolkits: z

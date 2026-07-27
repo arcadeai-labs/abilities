@@ -3,9 +3,9 @@
  *
  * The input, the error and the report are local state, and the route mounts this with
  * a key per script — so switching scripts cannot leave you looking at another one's
- * report next to this one's input. The input starts from the schema's declared
- * `default`s. The user id is the exception and lives in an atom: it is the same
- * person whichever script they run.
+ * report next to this one's input. The input starts empty: defaults belong in `run`,
+ * not in a fabricated payload. The user id is the exception and lives in an atom —
+ * it is the same person whichever script they run.
  */
 
 import { useAtom } from "jotai"
@@ -13,16 +13,13 @@ import { useState } from "react"
 import { userIdAtom } from "@/atoms"
 import { useRunScript } from "@/hooks/api"
 import { useScriptActions } from "@/hooks/script-actions"
-import { defaultInputJson } from "./default-input"
 import { ScriptDetailsSheet } from "./script-detail"
 import { ScriptRunPane } from "./script-panes"
 import type { RunReportView, ScriptView } from "./types"
 
 export function ScriptScreen({ script }: { script: ScriptView }) {
   const [userId, setUserId] = useAtom(userIdAtom)
-  const [inputJson, setInputJson] = useState(() =>
-    defaultInputJson(script.input)
-  )
+  const [inputJson, setInputJson] = useState("{}")
   const [error, setError] = useState<string | null>(null)
   const [report, setReport] = useState<RunReportView | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
