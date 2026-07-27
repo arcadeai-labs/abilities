@@ -324,7 +324,9 @@ export const routes = new Hono()
       description:
         "Validates, then stores. An invalid script never lands, so every row in the table type-checks " +
         "against its catalog snapshot — the runner never has to ask whether a script is coherent. " +
-        "Idempotent on `name`: writing the same name again replaces it and bumps `version`.",
+        "Idempotent on `name`: writing the same name again replaces it and bumps `version`. " +
+        "Embed a reasonable `default` on each property of the input JSON Schema — the run UI " +
+        "seeds its payload from those values.",
       tags: ["scripts"],
       responses: {
         200: json(ScriptSchema, "Replaced an existing script."),

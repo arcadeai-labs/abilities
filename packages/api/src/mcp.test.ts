@@ -122,6 +122,14 @@ describe("argument schemas", () => {
     expect(input?.required?.sort()).toEqual(["input", "name", "output", "run"])
   })
 
+  it("asks upsert authors to embed defaults in the input JSON Schema", () => {
+    const tool = tools.get("upsert_script")
+    expect(tool?.description).toMatch(/embed a reasonable `default`/i)
+    expect(tool?.inputSchema.properties?.input?.description).toMatch(
+      /embed a reasonable `default`/i
+    )
+  })
+
   it("keeps a query parameter's default and leaves it optional", () => {
     const input = tools.get("list_tools")?.inputSchema
     expect(input?.properties?.limit?.default).toBe(100)
