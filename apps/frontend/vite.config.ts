@@ -56,9 +56,10 @@ const config = defineConfig({
   resolve: { tsconfigPaths: true },
   ssr: {
     // @repo/api is TypeScript source, so Vite has to transform it rather than hand
-    // it to Node. PGlite ships WASM and stays a plain Node import.
+    // it to Node. PGlite ships WASM and postgres is a Node driver — both stay
+    // plain Node imports.
     noExternal: ["@repo/api"],
-    external: ["@electric-sql/pglite"],
+    external: ["@electric-sql/pglite", "postgres"],
   },
   plugins: [
     rootEnv(),

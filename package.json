@@ -9,6 +9,7 @@
     "build": "turbo run build",
     "start": "turbo run start",
     "sync": "pnpm --filter @repo/api sync",
+    "db:migrate": "pnpm --filter @repo/api db:migrate",
     "typecheck": "turbo run typecheck",
     "urls": "portless list",
     "fmt": "biome check --write --unsafe .",
