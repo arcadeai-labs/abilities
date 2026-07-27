@@ -104,16 +104,22 @@ const config = defineConfig({
     // Seed/migrate read `packages/api/drizzle/meta/_journal.json` from disk. The
     // API source is bundled, so those files are not traced in — copy them into
     // the server output under the same relative path `MIGRATIONS_DIR` uses.
+    //
+    // Register via `modules` + `hook()`, not `hooks: { compiled }`: a config-level
+    // `compiled` replaces the Vercel preset's own compiled handler (which writes
+    // `.vercel/output/config.json`), and Vercel then looks for a `dist` folder.
     nitro({
-      hooks: {
-        async compiled(nitro) {
-          cpSync(
-            drizzleMigrations,
-            join(nitro.options.output.serverDir, "packages/api/drizzle"),
-            { recursive: true }
-          )
+      modules: [
+        (nitro) => {
+          nitro.hooks.hook("compiled", () => {
+            cpSync(
+              drizzleMigrations,
+              join(nitro.options.output.serverDir, "packages/api/drizzle"),
+              { recursive: true }
+            )
+          })
         },
-      },
+      ],
     }),
     viteReact(),
   ],
