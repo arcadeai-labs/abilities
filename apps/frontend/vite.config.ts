@@ -1,3 +1,5 @@
+import { cpSync } from "node:fs"
+import { join } from "node:path"
 import tailwindcss from "@tailwindcss/vite"
 import { devtools } from "@tanstack/devtools-vite"
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
@@ -6,6 +8,9 @@ import { nitro } from "nitro/vite"
 import { defineConfig, loadEnv, type Plugin } from "vite"
 
 const workspaceRoot = new URL("../../", import.meta.url).pathname
+
+/** SQL migrations `@repo/api` applies on seed — must ship with the serverless function. */
+const drizzleMigrations = join(workspaceRoot, "packages/api/drizzle")
 
 /**
  * This server hosts the API (see src/routes/api.$.ts), so it needs the API's
@@ -96,7 +101,20 @@ const config = defineConfig({
     devtools(),
     tailwindcss(),
     tanstackStart(),
-    nitro(),
+    // Seed/migrate read `packages/api/drizzle/meta/_journal.json` from disk. The
+    // API source is bundled, so those files are not traced in — copy them into
+    // the server output under the same relative path `MIGRATIONS_DIR` uses.
+    nitro({
+      hooks: {
+        async compiled(nitro) {
+          cpSync(
+            drizzleMigrations,
+            join(nitro.options.output.serverDir, "packages/api/drizzle"),
+            { recursive: true }
+          )
+        },
+      },
+    }),
     viteReact(),
   ],
 })

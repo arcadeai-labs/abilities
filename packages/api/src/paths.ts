@@ -12,8 +12,10 @@ import { dirname, join, resolve } from "node:path"
  *
  * On Vercel there is no `pnpm-workspace.yaml` in the function filesystem. Real
  * Postgres (`POSTGRES_URL`) does not need the workspace root for the data dir;
- * migrations are applied out-of-band. Falling back to cwd keeps module load from
- * throwing before the Postgres branch can run.
+ * falling back to cwd keeps module load from throwing before the Postgres
+ * branch can run. Migrations still need a real folder at
+ * `{cwd}/packages/api/drizzle`: the frontend Nitro build copies `drizzle/`
+ * there so `POST /seed` (which runs `migrateDb`) can find `meta/_journal.json`.
  */
 function findWorkspaceRoot(from = process.cwd()): string | undefined {
   for (let dir = resolve(from); ; dir = dirname(dir)) {
@@ -28,5 +30,5 @@ export const WORKSPACE_ROOT = findWorkspaceRoot() ?? resolve(process.cwd())
 export const DATA_DIR =
   process.env.PGLITE_DATA_DIR ?? join(WORKSPACE_ROOT, "pgdata")
 
-/** `drizzle/` ships with this package, so its path is relative to the package. */
+/** `drizzle/` ships with this package; on Vercel the Nitro build mirrors it here. */
 export const MIGRATIONS_DIR = join(WORKSPACE_ROOT, "packages/api/drizzle")
