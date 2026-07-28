@@ -29,7 +29,6 @@ const meta = {
     onInputJsonChange: noop,
     onRun: noop,
     onShowDetails: noop,
-    onUserIdChange: noop,
     script: summarizeIssue,
     userId: "anirudh@arcade.dev",
   },
@@ -50,7 +49,6 @@ type Story = StoryObj<typeof meta>
 /** Editable, so the input's JSON badge reacts to typing. */
 export const Ready: Story = {
   render: function ReadyStory(args) {
-    const [userId, setUserId] = useState(args.userId)
     const [inputJson, setInputJson] = useState(args.inputJson)
 
     return (
@@ -58,8 +56,6 @@ export const Ready: Story = {
         {...args}
         inputJson={inputJson}
         onInputJsonChange={setInputJson}
-        onUserIdChange={setUserId}
-        userId={userId}
       />
     )
   },

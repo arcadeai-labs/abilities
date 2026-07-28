@@ -10,6 +10,7 @@ import {
   getSessionUser,
   isAuthConfigured,
   resolveRunUserId,
+  signInAuthorizationUrl,
 } from "./auth"
 import {
   authorizationFor,
@@ -24,6 +25,7 @@ import { mcpHandler } from "./mcp"
 import { openApiDocument } from "./openapi"
 import { type ScriptRow, scripts, tools } from "./schema"
 import {
+  AuthRecoveryResponseSchema,
   CoverageResponseSchema,
   ErrorResponseSchema,
   MeResponseSchema,
@@ -477,8 +479,8 @@ export const routes = new Hono()
           "The input did not match the script's declared `input` schema."
         ),
         401: json(
-          ErrorResponseSchema,
-          "AUTH_REQUIRED is set and there is no session."
+          AuthRecoveryResponseSchema,
+          "Sign in required — body includes `authorizationUrl` for the browser OIDC flow."
         ),
         404: json(ErrorResponseSchema, "No such script."),
         409: json(
@@ -505,11 +507,21 @@ export const routes = new Hono()
       const { input, userId: bodyUserId } = c.req.valid("json")
       const userId = await resolveRunUserId(c.req.raw.headers, bodyUserId)
       if (userId === null) {
+        const authorizationUrl = signInAuthorizationUrl()
         c.header("x-bff-auth-recovery", "session_missing")
+        // MCP clients look for WWW-Authenticate on 401 (SEP-1489 / RFC 9728).
+        // `authorization_uri` carries the browser sign-in URL until this app
+        // publishes protected-resource metadata.
+        c.header(
+          "WWW-Authenticate",
+          `Bearer error="invalid_token", error_description="Sign in required to run scripts", authorization_uri="${authorizationUrl}"`
+        )
         return c.json(
           {
-            error: "auth_recovery_required",
-            message: "Sign in required to run scripts.",
+            error: "auth_recovery_required" as const,
+            message:
+              "Sign in required to run scripts. Open authorizationUrl in a browser, complete sign-in, then retry.",
+            authorizationUrl,
           },
           401
         )

@@ -66,7 +66,7 @@ function Workbench({
   const [sheetOpen, setSheetOpen] = useState(detailsOpen)
   const [chatVisible, setChatVisible] = useState(chatOpen)
   const [prompt, setPrompt] = useState("")
-  const [userId, setUserId] = useState("anirudh@arcade.dev")
+  const userId = "anirudh@arcade.dev"
   const [inputJson, setInputJson] = useState(
     '{\n  "owner": "arcadeai",\n  "repo": "arcade-ai",\n  "number": 481\n}\n'
   )
@@ -130,7 +130,6 @@ function Workbench({
             onInputJsonChange={setInputJson}
             onRun={noop}
             onShowDetails={() => setSheetOpen(true)}
-            onUserIdChange={setUserId}
             report={report}
             running={running}
             script={script}

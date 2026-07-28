@@ -1,13 +1,16 @@
 /**
  * What you fill in to run a script, and what comes back.
  *
- * The user id is a field rather than a setting because tools execute as a named
- * end user with that user's authorizations — never as the deployment — so it is
- * part of the run, not of the app. There is no dry-run: a plausible value
- * generated from a declared shape only proves the shape was declared.
+ * The end user is shown rather than edited: tools execute as that named
+ * account with their authorizations — never as the deployment — and a signed-in
+ * session locks the field to the user's email. A 401 with an authorization URL
+ * is shown here the same way tool grants surface an Authorize link. There is no
+ * dry-run: a plausible value generated from a declared shape only proves the
+ * shape was declared.
  */
 import { UserIcon } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field"
 import {
   InputGroup,
@@ -20,19 +23,19 @@ import type { RunReportView } from "./types"
 
 function RunPanel({
   userId,
-  onUserIdChange,
   inputJson,
   onInputJsonChange,
   disabled = false,
   error = null,
+  authorizationUrl = null,
   report = null,
 }: {
   userId: string
-  onUserIdChange: (userId: string) => void
   inputJson: string
   onInputJsonChange: (inputJson: string) => void
   disabled?: boolean
   error?: string | null
+  authorizationUrl?: string | null
   report?: RunReportView | null
 }) {
   return (
@@ -44,17 +47,15 @@ function RunPanel({
             <UserIcon />
           </InputGroupAddon>
           <InputGroupInput
-            disabled={disabled}
+            disabled
             id="run-user"
-            onChange={(event) => onUserIdChange(event.target.value)}
             placeholder="user@example.com"
             value={userId}
           />
         </InputGroup>
         <FieldDescription>
-          The Arcade end user. Signed-in sessions fill this from your OIDC
-          account id; otherwise type an email or UUID. Every tool call is
-          bounded by what they could already do themselves.
+          The Arcade end user. Filled from your signed-in email. Every tool call
+          is bounded by what they could already do themselves.
         </FieldDescription>
       </Field>
 
@@ -70,8 +71,29 @@ function RunPanel({
 
       {error ? (
         <Alert variant="destructive">
-          <AlertTitle>Could not run</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertTitle>
+            {authorizationUrl ? "Sign in required" : "Could not run"}
+          </AlertTitle>
+          <AlertDescription className="flex flex-col gap-3">
+            <span>{error}</span>
+            {authorizationUrl ? (
+              <Button
+                className="w-fit"
+                nativeButton={false}
+                render={
+                  <a
+                    href={authorizationUrl}
+                    rel="noreferrer"
+                    target="_blank"
+                  />
+                }
+                size="sm"
+                variant="outline"
+              >
+                Sign in
+              </Button>
+            ) : null}
+          </AlertDescription>
         </Alert>
       ) : null}
 

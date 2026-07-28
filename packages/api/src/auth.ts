@@ -3,11 +3,11 @@
  *
  * Same model as Arcade's experience-api: the browser only holds httpOnly session
  * cookies; OIDC access tokens live in the DB and are attached as Bearer when we
- * call Arcade upstream. Identity for tool runs is `user.accountId` (= OIDC `sub`).
+ * call Arcade upstream. Identity for tool runs is the signed-in user's email
+ * (falling back to `user.accountId` / OIDC `sub` when email is missing).
  *
- * Auth is optional until OIDC env is set — the rest of the API keeps working with
- * a typed-in Arcade user id. Set `AUTH_REQUIRED=true` to refuse unauthenticated
- * runs once login works.
+ * Auth is optional until OIDC env is set — without it, the API accepts a body
+ * `userId` for local runs. Once OIDC is configured, runs require a session.
  */
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
@@ -67,6 +67,11 @@ export function authBaseURL(): string {
     process.env.PORTLESS_URL ??
     "http://localhost:3000"
   )
+}
+
+/** Browser sign-in page for session recovery (401 → open this, then retry). */
+export function signInAuthorizationUrl(): string {
+  return new URL("/login", authBaseURL()).href
 }
 
 function trustedOrigins(): string[] {
@@ -160,13 +165,13 @@ export function getAuth(): Auth | null {
 
 export type SessionUser = z.infer<typeof SessionUserSchema>
 
-/** Arcade `user_id` for a signed-in user: OIDC `sub`, else email. */
+/** Arcade `user_id` for a signed-in user: email, else OIDC `sub`. */
 export function arcadeUserId(user: {
   accountId?: string | null
   email?: string | null
 }): string | null {
-  if (user.accountId) return user.accountId
   if (user.email) return user.email
+  if (user.accountId) return user.accountId
   return null
 }
 
@@ -182,9 +187,9 @@ export async function getSessionUser(
 }
 
 /**
- * Prefer the signed-in Arcade identity; fall back to the request body for local
- * runs without OIDC. When `AUTH_REQUIRED=true`, missing session yields null so
- * the route can 401 with a typed error body.
+ * Prefer the signed-in Arcade identity. When OIDC is configured (or
+ * `AUTH_REQUIRED=true`), a missing session yields null so the route can 401.
+ * Without auth configured, fall back to the request body for local/API tests.
  */
 export async function resolveRunUserId(
   headers: Headers,
@@ -195,7 +200,7 @@ export async function resolveRunUserId(
     const id = arcadeUserId(user)
     if (id) return id
   }
-  if (process.env.AUTH_REQUIRED === "true") return null
+  if (isAuthConfigured() || process.env.AUTH_REQUIRED === "true") return null
   return bodyUserId
 }
 

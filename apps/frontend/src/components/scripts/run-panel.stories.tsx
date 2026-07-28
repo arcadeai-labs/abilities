@@ -14,7 +14,6 @@ const meta = {
     inputJson:
       '{\n  "owner": "arcadeai",\n  "repo": "arcade-ai",\n  "number": 481\n}\n',
     onInputJsonChange: noop,
-    onUserIdChange: noop,
     userId: "anirudh@arcade.dev",
   },
   decorators: [
@@ -31,7 +30,6 @@ type Story = StoryObj<typeof meta>
 
 export const Empty: Story = {
   render: function EmptyStory(args) {
-    const [userId, setUserId] = useState(args.userId)
     const [inputJson, setInputJson] = useState(args.inputJson)
 
     return (
@@ -39,8 +37,6 @@ export const Empty: Story = {
         {...args}
         inputJson={inputJson}
         onInputJsonChange={setInputJson}
-        onUserIdChange={setUserId}
-        userId={userId}
       />
     )
   },

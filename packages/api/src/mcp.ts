@@ -155,11 +155,43 @@ function successSchema(responses: Json, components: Json): Json | undefined {
  * JSON 2xx responses become `structuredContent` so clients get typed results;
  * anything 4xx/5xx becomes an `isError` result carrying the response body, which
  * the SDK exempts from output-schema validation.
+ *
+ * A 401 with `WWW-Authenticate` (or an `authorizationUrl` in the JSON body) is
+ * shaped for MCP auth recovery: agents see the URL in `content`, and clients that
+ * understand SEP-1489 get `mcp/www_authenticate` in `_meta`.
  */
 async function toResult(response: Response): Promise<CallToolResult> {
   const text = await response.text()
-  const content = [{ type: "text" as const, text }]
-  if (!response.ok) return { content, isError: true }
+  const wwwAuthenticate = response.headers.get("www-authenticate")
+  let bodyText = text
+  if (!response.ok && response.headers.get("content-type")?.includes("json")) {
+    try {
+      const body = JSON.parse(text) as {
+        message?: string
+        authorizationUrl?: string
+      }
+      if (typeof body.authorizationUrl === "string") {
+        bodyText = [
+          body.message ?? "Authorization required.",
+          "",
+          "Open this URL to authorize, then retry this tool call:",
+          body.authorizationUrl,
+        ].join("\n")
+      }
+    } catch {
+      // Keep the raw body when it is not JSON we recognize.
+    }
+  }
+  const content = [{ type: "text" as const, text: bodyText }]
+  if (!response.ok) {
+    return {
+      content,
+      isError: true,
+      ...(wwwAuthenticate
+        ? { _meta: { "mcp/www_authenticate": [wwwAuthenticate] } }
+        : {}),
+    }
+  }
   const parsed = response.headers
     .get("content-type")
     ?.includes("application/json")

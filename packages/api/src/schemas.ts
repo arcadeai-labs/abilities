@@ -103,6 +103,23 @@ export const ErrorResponseSchema = z
   .object({ error: z.string(), message: z.string() })
   .meta({ id: "ErrorResponse" })
 
+/**
+ * 401 when a run needs a browser sign-in. `authorizationUrl` is what MCP clients
+ * and agents should hand to the user — open it, complete OIDC, then retry.
+ */
+export const AuthRecoveryResponseSchema = z
+  .object({
+    error: z.literal("auth_recovery_required"),
+    message: z.string(),
+    authorizationUrl: z
+      .string()
+      .url()
+      .describe(
+        "Open this URL in a browser to sign in, then retry the tool call."
+      ),
+  })
+  .meta({ id: "AuthRecoveryResponse" })
+
 /** `?toolkit=Github,Slack` — same parsing as `ToolsQuerySchema`. */
 const toolkitFilter = z
   .union([z.string(), z.array(z.string())])
