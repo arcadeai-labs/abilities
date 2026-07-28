@@ -15,6 +15,7 @@ import { useAtom } from "jotai"
 import { MessageSquareIcon } from "lucide-react"
 import type * as React from "react"
 import { deleteDialogOpenAtom, deleteTargetAtom } from "@/atoms"
+import { AuthStatus } from "@/components/auth-status"
 import {
   AppShell,
   AppShellMain,
@@ -50,6 +51,7 @@ export function Workbench({ children }: { children: React.ReactNode }) {
           error={scriptsQuery.isError ? scriptsQuery.error.message : null}
           footer={
             <div className="flex flex-col gap-2">
+              <AuthStatus />
               <Button
                 className="w-full justify-start"
                 nativeButton={false}

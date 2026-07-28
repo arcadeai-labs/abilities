@@ -6,6 +6,12 @@ import { describeRoute, resolver, validator } from "hono-openapi"
 import { z } from "zod"
 import { agentHandler } from "./agent"
 import {
+  getAuth,
+  getSessionUser,
+  isAuthConfigured,
+  resolveRunUserId,
+} from "./auth"
+import {
   authorizationFor,
   type Catalog,
   coverage,
@@ -20,6 +26,7 @@ import { type ScriptRow, scripts, tools } from "./schema"
 import {
   CoverageResponseSchema,
   ErrorResponseSchema,
+  MeResponseSchema,
   RevalidateResponseSchema,
   RunReportSchema,
   RunRequestSchema,
@@ -95,6 +102,27 @@ const emptyBodyIsEmptyObject = createMiddleware(async (c, next) => {
  */
 export const routes = new Hono()
   .use(emptyBodyIsEmptyObject)
+  .get(
+    "/me",
+    describeRoute({
+      operationId: "getMe",
+      summary: "Current session",
+      description:
+        "Whether OIDC auth is configured on this process, and the signed-in user if any. " +
+        "Always 200 — `configured: false` means login is disabled; `user: null` means signed out.",
+      tags: ["auth"],
+      responses: {
+        200: json(MeResponseSchema, "Auth config and optional session user."),
+      },
+    }),
+    async (c) => {
+      if (!isAuthConfigured()) {
+        return c.json({ configured: false, user: null }, 200)
+      }
+      const user = await getSessionUser(c.req.raw.headers)
+      return c.json({ configured: true, user }, 200)
+    }
+  )
   .post(
     "/seed",
     describeRoute({
@@ -448,6 +476,10 @@ export const routes = new Hono()
           RunReportSchema,
           "The input did not match the script's declared `input` schema."
         ),
+        401: json(
+          ErrorResponseSchema,
+          "AUTH_REQUIRED is set and there is no session."
+        ),
         404: json(ErrorResponseSchema, "No such script."),
         409: json(
           RunReportSchema,
@@ -470,7 +502,19 @@ export const routes = new Hono()
       if (!script)
         return c.json({ error: "not_found", message: "No such script." }, 404)
 
-      const { input, userId } = c.req.valid("json")
+      const { input, userId: bodyUserId } = c.req.valid("json")
+      const userId = await resolveRunUserId(c.req.raw.headers, bodyUserId)
+      if (userId === null) {
+        c.header("x-bff-auth-recovery", "session_missing")
+        return c.json(
+          {
+            error: "auth_recovery_required",
+            message: "Sign in required to run scripts.",
+          },
+          401
+        )
+      }
+
       const report = await runScript({ script, input: input ?? {}, userId })
 
       // The outcome union is the real answer; the status is a lossy summary of it.
@@ -560,6 +604,23 @@ const present = async (row: ScriptRow) =>
  */
 export const app = new Hono()
   .route("/api", routes)
+  // Better Auth (login, callback, get-session, sign-out). Optional until OIDC env
+  // is set — see ./auth. Mounted on `app`, not `routes`, so it stays out of the
+  // OpenAPI / MCP surface the same way /chat and /mcp do.
+  .all("/api/auth/*", (c) => {
+    const auth = getAuth()
+    if (!auth) {
+      return c.json(
+        {
+          error: "auth_not_configured",
+          message:
+            "Set BETTER_AUTH_SECRET, OIDC_CLIENT_ID, and OIDC_DISCOVERY_URL to enable login.",
+        },
+        503
+      )
+    }
+    return auth.handler(c.req.raw)
+  })
   // A UI message stream, not a catalog operation — see ./agent. Tools come from
   // `/api/mcp` via createMCPClient, so the agent and every other MCP client share
   // one derived list.
@@ -590,6 +651,7 @@ const document = openApiDocument(app, {
         "`POST /api/seed` populates it; the read endpoints query it.",
     },
     tags: [
+      { name: "auth", description: "Session and OIDC configuration." },
       { name: "seed", description: "Populate the mirror from the Arcade API." },
       { name: "tools", description: "Read the mirrored catalog." },
       {

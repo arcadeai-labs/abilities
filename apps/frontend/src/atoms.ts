@@ -13,9 +13,9 @@ import { atom } from "jotai"
 /**
  * The Arcade end user tools execute as. Kept across scripts; it rarely changes.
  *
- * The default is a real account rather than a placeholder, because an unauthorized
- * user id makes every run come back `authorization_required` — which reads as the
- * app being broken rather than as a field wanting a value.
+ * When OIDC login is configured, the rail auth chip overwrites this with the
+ * signed-in account id (`sub`). The default remains a real account so local
+ * runs without auth still reach authorized tools instead of looking broken.
  */
 export const userIdAtom = atom("anirudh@arcade.dev")
 

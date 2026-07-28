@@ -4,6 +4,7 @@ import type { PgliteDatabase } from "drizzle-orm/pglite"
 import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js"
 import { migrate as migratePostgres } from "drizzle-orm/postgres-js/migrator"
 import postgres from "postgres"
+import * as authSchema from "./auth-schema"
 import { DATA_DIR, MIGRATIONS_DIR } from "./paths"
 import { runs, scripts, tools } from "./schema"
 
@@ -23,7 +24,7 @@ export function describeDb(): string {
   return `pglite ${DATA_DIR}`
 }
 
-const schema = { tools, scripts, runs }
+const schema = { tools, scripts, runs, ...authSchema }
 
 export type Db = PgliteDatabase<typeof schema>
 

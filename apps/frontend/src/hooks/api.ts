@@ -11,7 +11,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query"
+import { z } from "zod"
 import { api } from "@/lib/api"
+import { signInWithOidc } from "@/lib/auth-client"
 
 export const scriptKeys = {
   all: ["scripts"],
@@ -23,6 +25,16 @@ export const toolkitKeys = {
   all: ["toolkits"],
   list: () => [...toolkitKeys.all, "list"],
 }
+
+export const authKeys = {
+  all: ["auth"],
+  me: () => [...authKeys.all, "me"],
+}
+
+const OAuthSignInSchema = z.object({
+  url: z.string().url().optional(),
+  redirect: z.boolean().optional(),
+})
 
 type ClientQueryOptions<T> = Omit<
   UseQueryOptions<T, Error>,
@@ -102,8 +114,9 @@ async function fetchRun(name: string, body: RunScriptBody) {
     param: { name },
     json: body,
   })
-  if (res.status === 404) {
-    throw new Error((await res.json()).message)
+  if (res.status === 404 || res.status === 401) {
+    const err = await res.json()
+    throw new Error(err.message)
   }
   // Every other status still returns a run report.
   return res.json()
@@ -131,5 +144,61 @@ export function useToolkits(options?: ClientQueryOptions<ToolkitsList>) {
     queryKey: toolkitKeys.list(),
     queryFn: fetchToolkits,
     ...options,
+  })
+}
+
+export type Me = Awaited<ReturnType<typeof fetchMe>>
+
+async function fetchMe() {
+  const res = await api.me.$get()
+  if (!res.ok) {
+    throw new Error("Failed to load auth status")
+  }
+  return res.json()
+}
+
+export function useMe(options?: ClientQueryOptions<Me>) {
+  return useQuery({
+    queryKey: authKeys.me(),
+    queryFn: fetchMe,
+    ...options,
+  })
+}
+
+/** Whether the BFF has OIDC env wired up (`useMe` → `configured`). */
+export function useAuthConfigured() {
+  const me = useMe()
+  return {
+    ...me,
+    data: me.data?.configured ?? null,
+  }
+}
+
+/** Pull the IdP authorize URL out of a Better Auth oauth2 sign-in result. */
+export function oauthRedirectUrl(data: unknown): string | null {
+  const parsed = OAuthSignInSchema.safeParse(data)
+  return parsed.success ? (parsed.data.url ?? null) : null
+}
+
+async function startOidcSignIn(callbackURL = "/") {
+  const result = await signInWithOidc(callbackURL)
+  if (result.error) {
+    throw new Error(result.error.message || "Sign-in failed")
+  }
+  const url = oauthRedirectUrl(result.data)
+  if (!url) {
+    throw new Error(
+      "Sign-in did not return a redirect URL. Is OIDC configured?"
+    )
+  }
+  return url
+}
+
+export function useSignInOidc() {
+  return useMutation({
+    mutationFn: (callbackURL?: string) => startOidcSignIn(callbackURL),
+    onSuccess: (url) => {
+      window.location.href = url
+    },
   })
 }
