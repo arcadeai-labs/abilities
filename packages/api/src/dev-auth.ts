@@ -16,6 +16,11 @@
  * security model. Both it and `DEV_AUTH` are read per call rather than at module
  * load, because the three processes that host this app pick up the workspace `.env`
  * at different times.
+ *
+ * A Vercel preview is the case this exists for. Its hostname changes per deployment
+ * and an OIDC client registers exact redirect URIs, so no preview URL can be
+ * pre-registered with the IdP — real login there is a dead end, while the deployment
+ * is still not production.
  */
 import type { SessionUser } from "./auth"
 
@@ -33,16 +38,27 @@ let warnedInProduction = false
 
 export function devAuthEnabled(): boolean {
   if (process.env.DEV_AUTH !== "true") return false
-  if (process.env.NODE_ENV === "production") {
+  if (isProductionDeployment()) {
     if (!warnedInProduction) {
       warnedInProduction = true
       console.warn(
-        "DEV_AUTH=true ignored because NODE_ENV=production. Set OIDC_CLIENT_ID / OIDC_DISCOVERY_URL / BETTER_AUTH_SECRET for real login."
+        "DEV_AUTH=true ignored: this is the production deployment. Set OIDC_CLIENT_ID / OIDC_DISCOVERY_URL / BETTER_AUTH_SECRET for real login."
       )
     }
     return false
   }
   return true
+}
+
+/**
+ * The production *deployment*, which is not the same thing as a production build.
+ * Vercel sets `NODE_ENV=production` for preview deployments too, so `NODE_ENV` alone
+ * would refuse a dev session exactly where one is wanted. `VERCEL_ENV` distinguishes
+ * them (`production` / `preview` / `development`) and wins wherever it exists.
+ */
+function isProductionDeployment(): boolean {
+  if (process.env.VERCEL_ENV) return process.env.VERCEL_ENV === "production"
+  return process.env.NODE_ENV === "production"
 }
 
 /**

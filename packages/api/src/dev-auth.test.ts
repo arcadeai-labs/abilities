@@ -13,6 +13,7 @@ const MANAGED = [
   "DEV_AUTH",
   "DEV_AUTH_USER",
   "NODE_ENV",
+  "VERCEL_ENV",
   "BETTER_AUTH_SECRET",
   "OIDC_CLIENT_ID",
   "OIDC_DISCOVERY_URL",
@@ -129,6 +130,28 @@ describe("dev sign-in", () => {
     })
     // No OIDC env either, so login is simply unavailable — not faked.
     expect((await getSession()).status).toBe(503)
+    warn.mockRestore()
+  })
+
+  it("still engages on a Vercel preview, which builds as production", async () => {
+    // The case dev auth exists for: NODE_ENV says production, the deployment is not.
+    process.env.NODE_ENV = "production"
+    process.env.VERCEL_ENV = "preview"
+
+    expect(await (await app.request("/api/me")).json()).toMatchObject({
+      mode: "dev",
+      user: { accountId: DEV_USER },
+    })
+  })
+
+  it("refuses on the production deployment even when NODE_ENV is unset", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    process.env.VERCEL_ENV = "production"
+
+    expect(await (await app.request("/api/me")).json()).toEqual({
+      mode: "off",
+      user: null,
+    })
     warn.mockRestore()
   })
 

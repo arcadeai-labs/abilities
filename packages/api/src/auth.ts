@@ -73,16 +73,40 @@ export function authMode(): AuthMode {
 }
 
 /**
- * Public origin Better Auth issues redirects for. Under `pnpm dev`, portless
- * injects `PORTLESS_URL` (e.g. https://returntypes.localhost); override with
- * `BETTER_AUTH_URL` when that is wrong (preview hosts, standalone API).
+ * Public origin Better Auth issues redirects for — and, more to the point, the host
+ * in the `redirect_uri` it sends the IdP. Under `pnpm dev`, portless injects
+ * `PORTLESS_URL` (e.g. https://returntypes.localhost); `BETTER_AUTH_URL` overrides
+ * everything, for a host none of this guesses right.
+ *
+ * The `localhost:3000` default is a *last* resort rather than the fallback for
+ * anything deployed. A deployment that guesses localhost does not fail loudly: it
+ * sends the IdP a plausible `redirect_uri`, the IdP rejects it as unregistered or
+ * bounces the browser to a machine that isn't there, and login simply never
+ * completes. So a Vercel deployment names itself from Vercel's own env instead.
  */
 export function authBaseURL(): string {
   return (
     process.env.BETTER_AUTH_URL ??
     process.env.PORTLESS_URL ??
+    vercelOrigin() ??
     "http://localhost:3000"
   )
+}
+
+/**
+ * This deployment's own public origin, or null off Vercel.
+ *
+ * Previews prefer `VERCEL_BRANCH_URL` over `VERCEL_URL`: the latter changes with
+ * every deployment, and an OIDC client registers exact redirect URIs, so a
+ * per-deployment host is one nobody can ever register. The branch URL is stable, so
+ * it is the only preview host where real login could be made to work.
+ */
+function vercelOrigin(): string | null {
+  const host =
+    process.env.VERCEL_ENV === "production"
+      ? (process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL)
+      : (process.env.VERCEL_BRANCH_URL ?? process.env.VERCEL_URL)
+  return host ? `https://${host}` : null
 }
 
 function trustedOrigins(): string[] {
