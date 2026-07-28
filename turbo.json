@@ -1,6 +1,11 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalPassThroughEnv": [
+    "ORY_PROJECT_ID",
+    "OIDC_CLIENT_ID",
+    "OIDC_CLIENT_SECRET"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

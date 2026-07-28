@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@11.10.0",
   "scripts": {
-    "dev": "node scripts/dev.mjs",
+    "dev": "node --env-file-if-exists=.env scripts/dev.mjs",
     "dev:ports": "turbo run dev",
     "build": "turbo run build",
     "start": "turbo run start",
