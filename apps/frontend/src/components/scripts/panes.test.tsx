@@ -45,7 +45,6 @@ const runPane = (name: string) =>
       onInputJsonChange={noop}
       onRun={noop}
       onShowDetails={noop}
-      onUserIdChange={noop}
       script={scriptNamed(name)}
       userId="user"
     />
@@ -193,7 +192,6 @@ test("run panel reports the outcome, the calls and the drift", () => {
     <RunPanel
       inputJson="{}"
       onInputJsonChange={noop}
-      onUserIdChange={noop}
       report={successfulRun}
       userId="user"
     />

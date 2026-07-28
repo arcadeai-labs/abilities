@@ -124,11 +124,11 @@ function BrowsePane({
 function ScriptRunPane({
   script,
   userId,
-  onUserIdChange,
   inputJson,
   onInputJsonChange,
   running = false,
   error = null,
+  authorizationUrl = null,
   report = null,
   onRun,
   onShowDetails,
@@ -136,11 +136,11 @@ function ScriptRunPane({
 }: {
   script: ScriptView
   userId: string
-  onUserIdChange: (userId: string) => void
   inputJson: string
   onInputJsonChange: (inputJson: string) => void
   running?: boolean
   error?: string | null
+  authorizationUrl?: string | null
   report?: RunReportView | null
   onRun: () => void
   onShowDetails: () => void
@@ -183,11 +183,11 @@ function ScriptRunPane({
             </span>
           </div>
           <RunPanel
+            authorizationUrl={authorizationUrl}
             disabled={running}
             error={error}
             inputJson={inputJson}
             onInputJsonChange={onInputJsonChange}
-            onUserIdChange={onUserIdChange}
             report={report}
             userId={userId}
           />

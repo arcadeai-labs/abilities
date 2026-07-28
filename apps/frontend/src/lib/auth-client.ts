@@ -30,12 +30,12 @@ export function signInWithOidc(callbackURL = "/") {
   })
 }
 
-/** Arcade `user_id` from a Better Auth session user. */
+/** Arcade `user_id` from a Better Auth session user: email, else OIDC `sub`. */
 export function arcadeUserIdFromSession(user: {
   accountId?: string | null
   email?: string | null
 }): string | null {
-  if (user.accountId) return user.accountId
   if (user.email) return user.email
+  if (user.accountId) return user.accountId
   return null
 }

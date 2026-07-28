@@ -1,6 +1,6 @@
 /**
- * Session chip in the rail: sign in / out, and mirror the Arcade account id
- * into the run-as atom so tool calls use the signed-in identity.
+ * Session chip in the rail: sign in / out, and mirror the signed-in email into
+ * the run-as atom so tool calls use that identity.
  */
 import { Link } from "@tanstack/react-router"
 import { useSetAtom } from "jotai"
@@ -14,9 +14,10 @@ export function AuthStatus() {
   const setUserId = useSetAtom(userIdAtom)
 
   useEffect(() => {
+    if (isPending) return
     const id = session?.user ? arcadeUserIdFromSession(session.user) : null
-    if (id) setUserId(id)
-  }, [session, setUserId])
+    setUserId(id ?? "")
+  }, [session, isPending, setUserId])
 
   if (isPending) {
     return (

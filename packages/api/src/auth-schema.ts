@@ -2,9 +2,9 @@
  * Better Auth tables. Kept separate from the app schema so the CLI / docs can
  * regenerate this file without fighting scripts/tools/runs.
  *
- * `user.accountId` is Arcade's identity key: the OIDC `sub` (Ory identity id).
- * Tool runs should use that value as Arcade `user_id`, not Better Auth's internal
- * `user.id`.
+ * `user.accountId` stores the OIDC `sub` (Ory identity id). Tool runs prefer the
+ * user's email as Arcade `user_id`, falling back to `accountId` — never Better
+ * Auth's internal `user.id`.
  */
 import { boolean, pgTable, text, timestamp } from "drizzle-orm/pg-core"
 

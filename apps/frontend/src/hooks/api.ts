@@ -109,12 +109,32 @@ export type RunScriptBody = {
 
 export type RunReport = Awaited<ReturnType<typeof fetchRun>>
 
+/** 401 from run — open `authorizationUrl`, then retry. */
+export class AuthRecoveryError extends Error {
+  readonly authorizationUrl: string
+
+  constructor(message: string, authorizationUrl: string) {
+    super(message)
+    this.name = "AuthRecoveryError"
+    this.authorizationUrl = authorizationUrl
+  }
+}
+
 async function fetchRun(name: string, body: RunScriptBody) {
   const res = await api.scripts[":name"].run.$post({
     param: { name },
     json: body,
   })
-  if (res.status === 404 || res.status === 401) {
+  if (res.status === 401) {
+    const err = await res.json()
+    const url =
+      "authorizationUrl" in err && typeof err.authorizationUrl === "string"
+        ? err.authorizationUrl
+        : null
+    if (url) throw new AuthRecoveryError(err.message, url)
+    throw new Error(err.message)
+  }
+  if (res.status === 404) {
     const err = await res.json()
     throw new Error(err.message)
   }

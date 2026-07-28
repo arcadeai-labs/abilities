@@ -5,19 +5,18 @@ import { atom } from "jotai"
  *
  * Almost nothing does. What the user is looking at is the URL's job, and a run
  * belongs to the script whose page it happens on — so that lives in the pane and
- * resets when the pane changes script. What is left is the user we run as, which is
- * worth typing once, and the delete dialog's target, because the dialog is mounted
- * above the routes.
+ * resets when the pane changes script. What is left is the user we run as, which
+ * the auth chip fills from the signed-in email, and the delete dialog's target,
+ * because the dialog is mounted above the routes.
  */
 
 /**
- * The Arcade end user tools execute as. Kept across scripts; it rarely changes.
+ * The Arcade end user tools execute as. Kept across scripts.
  *
- * When OIDC login is configured, the rail auth chip overwrites this with the
- * signed-in account id (`sub`). The default remains a real account so local
- * runs without auth still reach authorized tools instead of looking broken.
+ * The rail auth chip sets this from the signed-in email and clears it on sign
+ * out. Empty means not signed in; a run then gets a 401 with an authorization URL.
  */
-export const userIdAtom = atom("anirudh@arcade.dev")
+export const userIdAtom = atom("")
 
 /** Which script the delete dialog is about to remove. */
 export const deleteTargetAtom = atom<string | null>(null)

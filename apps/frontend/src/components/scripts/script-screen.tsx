@@ -6,13 +6,15 @@
  * report next to this one's input. The input starts from the schema's declared
  * `default`s, with type-shaped placeholders for any required field that lacks
  * one — so Run always has a complete payload to edit. The user id is the
- * exception and lives in an atom: it is the same person whichever script they run.
+ * exception and lives in an atom: filled from the signed-in email when present.
+ * An unauthenticated run is allowed to hit the API; a 401 returns an
+ * authorization URL to open.
  */
 
-import { useAtom } from "jotai"
+import { useAtomValue } from "jotai"
 import { useState } from "react"
 import { userIdAtom } from "@/atoms"
-import { useRunScript } from "@/hooks/api"
+import { AuthRecoveryError, useRunScript } from "@/hooks/api"
 import { useScriptActions } from "@/hooks/script-actions"
 import { defaultInputJson } from "./default-input"
 import { ScriptDetailsSheet } from "./script-detail"
@@ -20,11 +22,12 @@ import { ScriptRunPane } from "./script-panes"
 import type { RunReportView, ScriptView } from "./types"
 
 export function ScriptScreen({ script }: { script: ScriptView }) {
-  const [userId, setUserId] = useAtom(userIdAtom)
+  const userId = useAtomValue(userIdAtom)
   const [inputJson, setInputJson] = useState(() =>
     defaultInputJson(script.input)
   )
   const [error, setError] = useState<string | null>(null)
+  const [authorizationUrl, setAuthorizationUrl] = useState<string | null>(null)
   const [report, setReport] = useState<RunReportView | null>(null)
   const [detailsOpen, setDetailsOpen] = useState(false)
   const { openDelete } = useScriptActions()
@@ -32,6 +35,7 @@ export function ScriptScreen({ script }: { script: ScriptView }) {
 
   const onRun = async () => {
     setError(null)
+    setAuthorizationUrl(null)
     setReport(null)
     let input: unknown
     try {
@@ -40,18 +44,22 @@ export function ScriptScreen({ script }: { script: ScriptView }) {
       setError("Input must be valid JSON")
       return
     }
-    if (!userId.trim()) {
-      setError("A user id is required — tools run as a named end user")
-      return
-    }
     try {
       setReport(
         await run.mutateAsync({
           name: script.name,
-          body: { input, userId: userId.trim() },
+          // Body `userId` is ignored once a session exists; a placeholder keeps
+          // the request valid so an unauthenticated run can still receive a 401
+          // with an authorization URL.
+          body: { input, userId: userId.trim() || "unauthenticated" },
         })
       )
     } catch (err) {
+      if (err instanceof AuthRecoveryError) {
+        setError(err.message)
+        setAuthorizationUrl(err.authorizationUrl)
+        return
+      }
       setError(err instanceof Error ? err.message : String(err))
     }
   }
@@ -59,13 +67,13 @@ export function ScriptScreen({ script }: { script: ScriptView }) {
   return (
     <>
       <ScriptRunPane
+        authorizationUrl={authorizationUrl}
         error={error}
         inputJson={inputJson}
         onDelete={openDelete}
         onInputJsonChange={setInputJson}
         onRun={() => void onRun()}
         onShowDetails={() => setDetailsOpen(true)}
-        onUserIdChange={setUserId}
         report={report}
         running={run.isPending}
         script={script}
