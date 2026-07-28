@@ -372,7 +372,13 @@ export const MeUserSchema = z
 /** Always 200: auth off, signed out, or signed in. */
 export const MeResponseSchema = z
   .object({
-    configured: z.boolean(),
+    mode: z
+      .enum(["oidc", "dev", "off"])
+      .describe(
+        "`oidc` is login against Arcade's IdP. `dev` is DEV_AUTH=true: signed in by " +
+          "default, no IdP, non-production only. `off` means no login is available and " +
+          "runs use the user id in the request body."
+      ),
     user: MeUserSchema.nullable(),
   })
   .meta({ id: "MeResponse" })

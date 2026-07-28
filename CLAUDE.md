@@ -154,6 +154,51 @@ compiles it, so there is no build step.
 - `pnpm --filter @repo/api smoke` drives every route in one pass against the live
   API. Same key requirement; it is a script, not a test.
 
+## Auth (`packages/api`)
+
+A Better Auth BFF (`src/auth.ts`) over the same Ory IdP as Arcade: the browser holds
+only an httpOnly session cookie, the OIDC tokens stay in the database, and identity
+for tool runs is `user.accountId` — the OIDC `sub`, which is the Arcade account.
+
+`authMode()` is the single thing to branch on, and there are three answers:
+
+- `oidc` — `BETTER_AUTH_SECRET` + `OIDC_CLIENT_ID` + `OIDC_DISCOVERY_URL` are set.
+- `dev` — `DEV_AUTH=true`. **Signed in by default with no IdP** (`src/dev-auth.ts`):
+  it answers `/api/auth/*` itself in Better Auth's own shapes, so `authClient` and
+  everything that reads a session need no dev branch. Signing out is a cookie and
+  signed-in is its absence, so there is no session store — nothing to migrate, no
+  rows in the auth tables, and no `BETTER_AUTH_URL` to get right. It runs as
+  `DEV_AUTH_USER`, defaulting to `ARCADE_USER_ID` so it matches the id `smoke.ts`
+  and the fixtures use. It wins over `oidc`, because a machine with credentials in
+  `.env` is exactly the one that wants to skip the dance, and it refuses on the
+  production **deployment** — `VERCEL_ENV` when set, else `NODE_ENV`, because Vercel
+  builds previews with `NODE_ENV=production` too and a preview is the case this
+  exists for. Nothing there authenticates anybody, so that check is the whole
+  security model.
+- `off` — neither. Login is unavailable and a run uses the `userId` in the request
+  body, which is what the UI's "Run as" field is.
+
+`AUTH_REQUIRED=true` refuses runs without a session in any mode. Put `DEV_AUTH=true`
+in the **workspace-root `.env`**, not the shell: turbo runs tasks in strict env mode,
+so an ambient variable never reaches the dev server.
+
+`authBaseURL()` is the host in the `redirect_uri` the IdP is handed, so getting it
+wrong does not fail loudly — the IdP rejects an unregistered URI, or the browser is
+sent to a machine that isn't there, and login just never completes. It reads
+`BETTER_AUTH_URL`, then `PORTLESS_URL`, then Vercel's own env, and only then
+localhost. Consequences worth knowing:
+
+- **An OIDC client registers exact redirect URIs**, so every origin that serves login
+  needs `{origin}/api/auth/oauth2/callback/oidc` registered on the Ory client. That is
+  why previews get `DEV_AUTH=true` instead: `VERCEL_URL` is per-deployment, so no
+  preview URL can be registered ahead of time.
+- Previews therefore prefer `VERCEL_BRANCH_URL`, which is stable per branch — the one
+  preview host where registering a URI would actually hold. `src/auth.test.ts` pins
+  that precedence.
+- Set `BETTER_AUTH_URL` **per environment** if at all. One pinned to the production
+  domain makes every preview send the browser to production, which then owns the
+  cookie — `.vercel.app` is on the public suffix list, so no cookie can span both.
+
 ## Scripts (`packages/api`)
 
 Users write TypeScript against the catalog's types, validate it without running it,

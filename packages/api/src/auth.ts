@@ -7,7 +7,8 @@
  *
  * Auth is optional until OIDC env is set — the rest of the API keeps working with
  * a typed-in Arcade user id. Set `AUTH_REQUIRED=true` to refuse unauthenticated
- * runs once login works.
+ * runs once login works. `DEV_AUTH=true` is the third mode: a real session shape
+ * with no IdP, so the signed-in paths work locally — see ./dev-auth.
  */
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
@@ -15,6 +16,7 @@ import { genericOAuth } from "better-auth/plugins"
 import { z } from "zod"
 import * as authSchema from "./auth-schema"
 import { db } from "./db"
+import { devAuthEnabled, devSessionUser } from "./dev-auth"
 
 const OIDC_PROVIDER_ID = "oidc"
 
@@ -56,17 +58,55 @@ export function isAuthConfigured(): boolean {
   )
 }
 
+export type AuthMode = "oidc" | "dev" | "off"
+
 /**
- * Public origin Better Auth issues redirects for. Under `pnpm dev`, portless
- * injects `PORTLESS_URL` (e.g. https://returntypes.localhost); override with
- * `BETTER_AUTH_URL` when that is wrong (preview hosts, standalone API).
+ * Which login this process serves, and the one thing routes should branch on.
+ *
+ * `dev` beats `oidc` deliberately: the reason to set `DEV_AUTH=true` is to skip the
+ * IdP round trip, and a machine that has OIDC credentials in `.env` is exactly the
+ * machine that wants to skip it.
+ */
+export function authMode(): AuthMode {
+  if (devAuthEnabled()) return "dev"
+  return isAuthConfigured() ? "oidc" : "off"
+}
+
+/**
+ * Public origin Better Auth issues redirects for — and, more to the point, the host
+ * in the `redirect_uri` it sends the IdP. Under `pnpm dev`, portless injects
+ * `PORTLESS_URL` (e.g. https://returntypes.localhost); `BETTER_AUTH_URL` overrides
+ * everything, for a host none of this guesses right.
+ *
+ * The `localhost:3000` default is a *last* resort rather than the fallback for
+ * anything deployed. A deployment that guesses localhost does not fail loudly: it
+ * sends the IdP a plausible `redirect_uri`, the IdP rejects it as unregistered or
+ * bounces the browser to a machine that isn't there, and login simply never
+ * completes. So a Vercel deployment names itself from Vercel's own env instead.
  */
 export function authBaseURL(): string {
   return (
     process.env.BETTER_AUTH_URL ??
     process.env.PORTLESS_URL ??
+    vercelOrigin() ??
     "http://localhost:3000"
   )
+}
+
+/**
+ * This deployment's own public origin, or null off Vercel.
+ *
+ * Previews prefer `VERCEL_BRANCH_URL` over `VERCEL_URL`: the latter changes with
+ * every deployment, and an OIDC client registers exact redirect URIs, so a
+ * per-deployment host is one nobody can ever register. The branch URL is stable, so
+ * it is the only preview host where real login could be made to work.
+ */
+function vercelOrigin(): string | null {
+  const host =
+    process.env.VERCEL_ENV === "production"
+      ? (process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL)
+      : (process.env.VERCEL_BRANCH_URL ?? process.env.VERCEL_URL)
+  return host ? `https://${host}` : null
 }
 
 function trustedOrigins(): string[] {
@@ -173,6 +213,7 @@ export function arcadeUserId(user: {
 export async function getSessionUser(
   headers: Headers
 ): Promise<SessionUser | null> {
+  if (devAuthEnabled()) return devSessionUser(headers)
   const auth = getAuth()
   if (!auth) return null
   const session = await auth.api.getSession({ headers })

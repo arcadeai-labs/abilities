@@ -31,8 +31,13 @@ export const authKeys = {
   me: () => [...authKeys.all, "me"],
 }
 
+/**
+ * `url` is not `.url()`: a real IdP returns an absolute authorize URL, but dev
+ * sign-in (`DEV_AUTH=true`) returns the same-origin path to land on, since the
+ * server behind the portless proxy cannot know its own public origin.
+ */
 const OAuthSignInSchema = z.object({
-  url: z.string().url().optional(),
+  url: z.string().min(1).optional(),
   redirect: z.boolean().optional(),
 })
 
@@ -165,12 +170,12 @@ export function useMe(options?: ClientQueryOptions<Me>) {
   })
 }
 
-/** Whether the BFF has OIDC env wired up (`useMe` → `configured`). */
-export function useAuthConfigured() {
+/** Which login the BFF serves: `oidc`, `dev`, `off` (`useMe` → `mode`). */
+export function useAuthMode() {
   const me = useMe()
   return {
     ...me,
-    data: me.data?.configured ?? null,
+    data: me.data?.mode ?? null,
   }
 }
 

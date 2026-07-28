@@ -5,12 +5,7 @@ import { createMiddleware } from "hono/factory"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { z } from "zod"
 import { agentHandler } from "./agent"
-import {
-  getAuth,
-  getSessionUser,
-  isAuthConfigured,
-  resolveRunUserId,
-} from "./auth"
+import { authMode, getAuth, getSessionUser, resolveRunUserId } from "./auth"
 import {
   authorizationFor,
   type Catalog,
@@ -19,6 +14,7 @@ import {
 } from "./catalog"
 import { generateTypes } from "./codegen"
 import { db } from "./db"
+import { devAuthHandler } from "./dev-auth"
 import { revalidateAll, runScript, upsertScript } from "./execute"
 import { mcpHandler } from "./mcp"
 import { openApiDocument } from "./openapi"
@@ -108,19 +104,20 @@ export const routes = new Hono()
       operationId: "getMe",
       summary: "Current session",
       description:
-        "Whether OIDC auth is configured on this process, and the signed-in user if any. " +
-        "Always 200 — `configured: false` means login is disabled; `user: null` means signed out.",
+        "Which login this process serves, and the signed-in user if any. Always 200 — " +
+        '`mode: "off"` means login is disabled; `user: null` means signed out.',
       tags: ["auth"],
       responses: {
-        200: json(MeResponseSchema, "Auth config and optional session user."),
+        200: json(MeResponseSchema, "Auth mode and optional session user."),
       },
     }),
     async (c) => {
-      if (!isAuthConfigured()) {
-        return c.json({ configured: false, user: null }, 200)
-      }
-      const user = await getSessionUser(c.req.raw.headers)
-      return c.json({ configured: true, user }, 200)
+      const mode = authMode()
+      if (mode === "off") return c.json({ mode, user: null }, 200)
+      return c.json(
+        { mode, user: await getSessionUser(c.req.raw.headers) },
+        200
+      )
     }
   )
   .post(
@@ -608,13 +605,16 @@ export const app = new Hono()
   // is set — see ./auth. Mounted on `app`, not `routes`, so it stays out of the
   // OpenAPI / MCP surface the same way /chat and /mcp do.
   .all("/api/auth/*", (c) => {
+    // `DEV_AUTH=true` answers these paths itself, in the same shapes, so nothing
+    // downstream — including the browser client — knows the difference.
+    if (authMode() === "dev") return devAuthHandler(c.req.raw)
     const auth = getAuth()
     if (!auth) {
       return c.json(
         {
           error: "auth_not_configured",
           message:
-            "Set BETTER_AUTH_SECRET, OIDC_CLIENT_ID, and OIDC_DISCOVERY_URL to enable login.",
+            "Set BETTER_AUTH_SECRET, OIDC_CLIENT_ID, and OIDC_DISCOVERY_URL to enable login, or DEV_AUTH=true to be signed in locally without an IdP.",
         },
         503
       )
@@ -651,7 +651,7 @@ const document = openApiDocument(app, {
         "`POST /api/seed` populates it; the read endpoints query it.",
     },
     tags: [
-      { name: "auth", description: "Session and OIDC configuration." },
+      { name: "auth", description: "Session and login configuration." },
       { name: "seed", description: "Populate the mirror from the Arcade API." },
       { name: "tools", description: "Read the mirrored catalog." },
       {
