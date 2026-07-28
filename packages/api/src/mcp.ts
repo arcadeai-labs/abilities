@@ -166,16 +166,21 @@ async function toResult(response: Response): Promise<CallToolResult> {
   let bodyText = text
   if (!response.ok && response.headers.get("content-type")?.includes("json")) {
     try {
-      const body = JSON.parse(text) as {
-        message?: string
-        authorizationUrl?: string
-      }
-      if (typeof body.authorizationUrl === "string") {
+      const body: unknown = JSON.parse(text)
+      const authorizationUrl =
+        isJson(body) && typeof body.authorizationUrl === "string"
+          ? body.authorizationUrl
+          : undefined
+      const message =
+        isJson(body) && typeof body.message === "string"
+          ? body.message
+          : undefined
+      if (authorizationUrl !== undefined) {
         bodyText = [
-          body.message ?? "Authorization required.",
+          message ?? "Authorization required.",
           "",
           "Open this URL to authorize, then retry this tool call:",
-          body.authorizationUrl,
+          authorizationUrl,
         ].join("\n")
       }
     } catch {

@@ -81,11 +81,7 @@ function RunPanel({
                 className="w-fit"
                 nativeButton={false}
                 render={
-                  <a
-                    href={authorizationUrl}
-                    rel="noreferrer"
-                    target="_blank"
-                  />
+                  <a href={authorizationUrl} rel="noreferrer" target="_blank" />
                 }
                 size="sm"
                 variant="outline"
