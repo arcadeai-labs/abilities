@@ -2,11 +2,15 @@
  * Sign in via Arcade's IdP (Ory / Coordinator OIDC). Only useful once
  * BETTER_AUTH_SECRET + OIDC_* are set on the server; otherwise the BFF returns
  * 503 and this page says so.
+ *
+ * `DEV_AUTH=true` makes the same button a local sign-in with no IdP at all, which
+ * is why this page reads `mode` rather than a boolean — the flow is identical, the
+ * thing on the other end is not.
  */
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { useAuthConfigured, useSignInOidc } from "@/hooks/api"
+import { useAuthMode, useSignInOidc } from "@/hooks/api"
 import { authClient } from "@/lib/auth-client"
 
 export const Route = createFileRoute("/login")({
@@ -15,7 +19,7 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
   const { data: session, isPending } = authClient.useSession()
-  const { data: configured = null } = useAuthConfigured()
+  const { data: mode = null } = useAuthMode()
   const signIn = useSignInOidc()
 
   useEffect(() => {
@@ -35,13 +39,22 @@ function LoginPage() {
         </p>
       </div>
 
-      {configured === false ? (
+      {mode === "off" ? (
         <p className="text-sm text-destructive" role="alert">
           Auth is not configured in this server process. Put{" "}
           <code>OIDC_CLIENT_ID</code>, <code>OIDC_CLIENT_SECRET</code>,{" "}
           <code>OIDC_DISCOVERY_URL</code>, and <code>BETTER_AUTH_SECRET</code>{" "}
-          in the workspace <code>.env</code>, then restart <code>pnpm dev</code>{" "}
-          (env is only read at startup).
+          in the workspace <code>.env</code> — or just{" "}
+          <code>DEV_AUTH=true</code> to skip the IdP locally — then restart{" "}
+          <code>pnpm dev</code> (env is only read at startup).
+        </p>
+      ) : null}
+
+      {mode === "dev" ? (
+        <p className="text-sm text-muted-foreground">
+          <code>DEV_AUTH=true</code>: this signs you straight in as{" "}
+          <code>DEV_AUTH_USER</code> (defaulting to <code>ARCADE_USER_ID</code>)
+          with no IdP involved. Non-production only.
         </p>
       ) : null}
 
@@ -49,11 +62,15 @@ function LoginPage() {
         <p className="text-sm text-muted-foreground">Checking session…</p>
       ) : (
         <Button
-          disabled={signIn.isPending || configured === false}
+          disabled={signIn.isPending || mode === "off"}
           onClick={() => signIn.mutate("/")}
           size="lg"
         >
-          {signIn.isPending ? "Redirecting…" : "Continue with Arcade"}
+          {signIn.isPending
+            ? "Redirecting…"
+            : mode === "dev"
+              ? "Continue as dev user"
+              : "Continue with Arcade"}
         </Button>
       )}
 

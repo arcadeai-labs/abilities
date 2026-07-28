@@ -7,7 +7,8 @@
  *
  * Auth is optional until OIDC env is set — the rest of the API keeps working with
  * a typed-in Arcade user id. Set `AUTH_REQUIRED=true` to refuse unauthenticated
- * runs once login works.
+ * runs once login works. `DEV_AUTH=true` is the third mode: a real session shape
+ * with no IdP, so the signed-in paths work locally — see ./dev-auth.
  */
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
@@ -15,6 +16,7 @@ import { genericOAuth } from "better-auth/plugins"
 import { z } from "zod"
 import * as authSchema from "./auth-schema"
 import { db } from "./db"
+import { devAuthEnabled, devSessionUser } from "./dev-auth"
 
 const OIDC_PROVIDER_ID = "oidc"
 
@@ -54,6 +56,20 @@ export function isAuthConfigured(): boolean {
       process.env.OIDC_CLIENT_ID &&
       process.env.OIDC_DISCOVERY_URL
   )
+}
+
+export type AuthMode = "oidc" | "dev" | "off"
+
+/**
+ * Which login this process serves, and the one thing routes should branch on.
+ *
+ * `dev` beats `oidc` deliberately: the reason to set `DEV_AUTH=true` is to skip the
+ * IdP round trip, and a machine that has OIDC credentials in `.env` is exactly the
+ * machine that wants to skip it.
+ */
+export function authMode(): AuthMode {
+  if (devAuthEnabled()) return "dev"
+  return isAuthConfigured() ? "oidc" : "off"
 }
 
 /**
@@ -173,6 +189,7 @@ export function arcadeUserId(user: {
 export async function getSessionUser(
   headers: Headers
 ): Promise<SessionUser | null> {
+  if (devAuthEnabled()) return devSessionUser(headers)
   const auth = getAuth()
   if (!auth) return null
   const session = await auth.api.getSession({ headers })
